@@ -1,4 +1,4 @@
-This is the **chat** asset for TMC's **Dot** collection. Every multiplayer game writes text chat, and every one of them writes the same four bugs into it.
+This is the **chat** asset for TMC's **Dot** collection. It adds useful functionality for handling text chat in multiplayer games, including server-side moderation, audience control, and message formatting.
 
 This collection of assets provides modular building blocks for creating games and applications within the TMC ecosystem, ensuring consistency and interoperability across all `dot-*` assets. This includes core functionality, networking, authentication, cloud integration, and more.
 
