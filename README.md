@@ -12,37 +12,24 @@ This asset, along with all the others, was built initially with **Claude Code** 
 I intend on reviewing code, testing, and editing documentation regularly. If you're interested in helping out, please let me know!
 
 ## Text Chat
-**Channels with an audience rule, sanitisation that survives markup and invisible
-characters, rate and repetition limits, command prefixes, scrollback, and a backlog
-for joining players.** The server decides who hears a line, what it may contain, and
-what name is drawn beside it — because every one of those is a decision a player must
-not be making about other players.
+**Channels with an audience rule, sanitisation that survives markup and invisible characters, rate and repetition limits, command prefixes, scrollback, and a backlog for joining players.** The server decides who hears a line, what it may contain, and what name is drawn beside it — because every one of those is a decision a player must not be making about other players.
 
 ## Why
 
-Chat is the only subsystem in a game where one player puts arbitrary text in front of
-every other player. The four things that go wrong are always the same:
+Chat is the only subsystem in a game where one player puts arbitrary text in front of every other player. The four things that go wrong are always the same:
 
-- **Markup.** A client draws chat in a `RichTextLabel` with BBCode on, and now anybody
-  can put a colour, a size, an image or a link in everybody else's window.
-- **Invisible text.** Zero-width characters and direction overrides make a message
-  that is empty, or that reads as something other than what it is.
-- **Attribution.** A client that sends a pre-formatted line has decided the name and
-  the prefix on the one machine that must not decide either, and can impersonate the
-  server by typing its prefix.
+- **Markup.** A client draws chat in a `RichTextLabel` with BBCode on, and now anybody can put a colour, a size, an image or a link in everybody else's window.
+- **Invisible text.** Zero-width characters and direction overrides make a message that is empty, or that reads as something other than what it is.
+- **Attribution.** A client that sends a pre-formatted line has decided the name and the prefix on the one machine that must not decide either, and can impersonate the server by typing its prefix.
 - **The audience.** Team chat that reaches the other team is a bug you ship once.
 
 dot-chat handles all four on the server, and hands your game a line to draw.
 
 ## Installing
 
-Copy `addons/dot_chat/` and [`dot-core`](https://github.com/modcommunity/dot-core)'s
-`addons/dot_core/` into your project and enable dot-chat in
-*Project → Project Settings → Plugins*.
+Copy `addons/dot_chat/` and [`dot-core`](https://github.com/modcommunity/dot-core)'s `addons/dot_core/` into your project and enable dot-chat in *Project → Project Settings → Plugins*.
 
-[dot-moderation](https://github.com/modcommunity/dot-moderation) is optional. When it
-is present, its gags apply here with no wiring at all: the router asks whatever is
-registered as `dot_mute_source` and neither addon names the other.
+[dot-moderation](https://github.com/modcommunity/dot-moderation) is optional. When it is present, its gags apply here with no wiring at all: the router asks whatever is registered as `dot_mute_source` and neither addon names the other.
 
 Requires Godot 4.7 or newer.
 
@@ -86,14 +73,11 @@ if not res.ok:
     hud.flash(res.error.message)
 ```
 
-That is a working chat system: everybody, team, whispers, `/me`, rate limits,
-repetition limits, escaping, scrollback and a backlog for whoever joins next.
+That is a working chat system: everybody, team, whispers, `/me`, rate limits, repetition limits, escaping, scrollback and a backlog for whoever joins next.
 
 ## Channels
 
-A channel is a `Resource` with an audience rule. `EVERYONE`, `TEAM`, `RADIUS` (proximity
-chat), `DIRECT` (whispers) and `MEMBERS` (a party, a clan, the dead, the admins — the
-host answers `membership_fn`).
+A channel is a `Resource` with an audience rule. `EVERYONE`, `TEAM`, `RADIUS` (proximity chat), `DIRECT` (whispers) and `MEMBERS` (a party, a clan, the dead, the admins — the host answers `membership_fn`).
 
 ```gdscript
 var proximity := DotChatChannel.make(&"near", "Nearby", DotChatChannel.Scope.RADIUS)
@@ -101,8 +85,7 @@ proximity.radius = 20.0
 router.add_channel(proximity)
 ```
 
-Membership is asked, never stored: which team a peer is on is a fact your game owns
-and changes every round, and a second copy of it is the copy that goes stale.
+Membership is asked, never stored: which team a peer is on is a fact your game owns and changes every round, and a second copy of it is the copy that goes stale.
 
 ## Commands
 
@@ -115,8 +98,7 @@ router.command_entered.connect(func(peer, command, args, raw):
         vote.rock_the_vote(peer))
 ```
 
-Which is how dot-server's chat commands and dot-vote's `!rtv` reach a player without
-either addon knowing this one exists.
+Which is how dot-server's chat commands and dot-vote's `!rtv` reach a player without either addon knowing this one exists.
 
 ## Validating
 
