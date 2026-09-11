@@ -12,7 +12,7 @@ This asset, along with all the others, was built initially with **Claude Code** 
 I intend on reviewing code, testing, and editing documentation regularly. If you're interested in helping out, please let me know!
 
 ## Text Chat
-**Channels with an audience rule, sanitisation that survives markup and invisible characters, rate and repetition limits, command prefixes, scrollback, and a backlog for joining players.** The server decides who hears a line, what it may contain, and what name is drawn beside it — because every one of those is a decision a player must not be making about other players.
+**Channels with an audience rule, sanitisation that survives markup and invisible characters, rate and repetition limits, command prefixes, scrollback, and a backlog for joining players.** The server decides who hears a line, what it may contain, and what name is drawn beside it, because every one of those is a decision a player must not be making about other players.
 
 ## Why
 
@@ -77,7 +77,7 @@ That is a working chat system: everybody, team, whispers, `/me`, rate limits, re
 
 ## Channels
 
-A channel is a `Resource` with an audience rule. `EVERYONE`, `TEAM`, `RADIUS` (proximity chat), `DIRECT` (whispers) and `MEMBERS` (a party, a clan, the dead, the admins — the host answers `membership_fn`).
+A channel is a `Resource` with an audience rule. `EVERYONE`, `TEAM`, `RADIUS` (proximity chat), `DIRECT` (whispers) and `MEMBERS` (a party, a clan, the dead, the admins; the host answers `membership_fn`).
 
 ```gdscript
 var proximity := DotChatChannel.make(&"near", "Nearby", DotChatChannel.Scope.RADIUS)

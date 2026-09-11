@@ -158,6 +158,38 @@ The guard is a flag rather than a match on the sender key, because a person sign
 the website *and* playing on the server has the same uid in both places: keying on that
 would have silently stopped relaying the in-game lines of every admin who left a tab open.
 
+### Telling the site what this server accepts
+
+`DotChatRelay.publish_commands()` posts the command table to
+`POST /api/integration/v1/chat/commands`, and the site's chat composer offers it when a
+member types `/`.
+
+**The list has to come from here because only here has it.** A member typing `/` on a web
+page is typing at a machine the site does not control, whose command table depends on which
+game is loaded and which modules an operator installed — so a list held by the website is
+stale the first time either changes. `commands_fn` is re-read on every publish rather than
+captured, for the same reason: a callable that closed over a list would publish the table as
+it was at boot, for ever. Call it again after loading or unloading a module.
+
+**Nothing published is a permission**, which is what makes accepting the list safe at the
+other end. Whether a particular person may run a particular command is decided here, per
+line, by `permission_fn` against this server's own admin file. The list decides only what is
+worth *offering* — and offering something that will always be refused teaches people the
+site is broken, which is why the source gate travels with it.
+
+That gate is the part worth reading twice. `DotConsole.command_document(source)` applies
+**the same source check `_run_command` applies**, so the menu is built at the relay's own
+`command_source`: a relay running as CHAT offers only what is marked `with_chat()`, and a
+relay running as RCON offers everything RCON reaches. A menu built from `chat_allowed` alone
+would hide an operator's whole toolbox from a deployment that deliberately made its site
+admins remote administrators, and offer a records server's map change to somebody whose
+every attempt is refused.
+
+A backbone that refuses the list does not take the relay down with it: an older site with no
+such endpoint is a menu that is empty, not a server whose chat has stopped. It logs at info
+for the reason this family always gives — a red line about a condition that is normal is how
+a real one stops being read.
+
 ### `announce_from`, and why `announce` was not enough
 
 `submit` takes a peer, because a line normally comes from somebody connected.
@@ -179,7 +211,7 @@ find . -name '*.gd' -not -path './.godot/*' | while read f; do
     godot --headless --path . --check-only --script "res://${f#./}"
 done
 godot --headless --path . res://examples/chat_selftest.tscn
-# 16 sections, 143 checks, all offline. Exits non-zero on any failure.
+# 16 sections, 149 checks, all offline. Exits non-zero on any failure.
 ```
 
 The suite counts its sections and fails if fewer ran than it has, because a script

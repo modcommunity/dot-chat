@@ -107,6 +107,19 @@ extends DotConfig
 ## [member DotChatRelay.uid_for_author] outright when the mapping is not a prefix.
 @export var author_uid_prefix: String = "backbone:"
 
+## Whether this server tells the site which commands it accepts.
+##
+## [b]On, and it is the one setting in this group that is safe on.[/b] It publishes NAMES,
+## not permissions: what a person may actually run is decided here, per line, against this
+## server's own admin file, so a published list grants nothing and withholding it protects
+## nothing. What it buys is the only autocomplete a web page could possibly have — the
+## command table depends on which game is loaded and which modules an operator installed,
+## so a list held by the website would be stale the first time either changed.
+##
+## Turn it off for a server whose command names are themselves private, which is a real
+## deployment and a rare one.
+@export var publish_commands: bool = true
+
 ## How much a relayed command is trusted, as a [code]DotCmdContext.Source[/code].
 ##
 ## [b]3 is CHAT, and it is the default for a reason that bit.[/b] dot-server refuses a

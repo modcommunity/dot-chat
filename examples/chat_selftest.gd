@@ -872,6 +872,53 @@ func _test_relay_out() -> void:
 	_check(backbone.posted.size() == before,
 		"nor is a line the relay itself just announced — that is the echo")
 
+	# What this server ACCEPTS, published so a site composer can offer it.
+	#
+	# The list is the server's because only the server has it: the command table depends on
+	# which game is loaded and which modules an operator installed, so a list held by the
+	# website is stale the first time either changes. `commands_fn` is re-read on every
+	# publish for exactly that reason, and the check below is what says so — a callable
+	# that closed over a list would answer the same thing twice.
+	var commands := [
+		{"name": "map", "usage": "<id>", "description": "Change the map",
+		 "chat_allowed": true, "permission": "changemap"},
+	]
+	relay.commands_fn = func() -> Array[Dictionary]:
+		var out: Array[Dictionary] = []
+		for c: Variant in commands:
+			out.append(c as Dictionary)
+		return out
+
+	var posted_before := backbone.posted.size()
+	await relay.publish_commands()
+	_check(
+		backbone.posted.size() == posted_before + 1,
+		"the command list is published"
+	)
+	var published: Dictionary = backbone.posted.back()
+	_check(str(published["path"]) == "chat/commands", "to the commands endpoint")
+	var listed: Array = (published["body"] as Dictionary).get("commands", [])
+	_check(listed.size() == 1 and str((listed[0] as Dictionary)["name"]) == "map",
+		"naming what the server accepts")
+
+	commands.append({"name": "maps", "usage": "", "description": "List them",
+		"chat_allowed": true, "permission": ""})
+	await relay.publish_commands()
+	var second: Array = (backbone.posted.back()["body"] as Dictionary).get("commands", [])
+	_check(
+		second.size() == 2,
+		"and a module loading changes it, because the callable is re-read rather than captured"
+	)
+
+	# A backbone that refuses must not take the relay down with it. An older site with no
+	# such endpoint is a menu that is empty, not a server whose chat has stopped.
+	backbone.fail_post = true
+	await relay.publish_commands()
+	backbone.fail_post = false
+	var still := router.submit(1, router.default_channel(), "still talking")
+	await get_tree().process_frame
+	_check(still.ok, "a site that will not take the list does not stop the chat")
+
 	relay.queue_free()
 	router.queue_free()
 

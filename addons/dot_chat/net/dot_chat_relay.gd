@@ -46,6 +46,9 @@ const SERVICE := &"dot_chat_relay"
 const PATH_POST := "chat"
 const PATH_OUTBOUND := "chat/outbound"
 
+## Where the command list is published, so a site composer can offer it.
+const PATH_COMMANDS := "chat/commands"
+
 const DEFAULT_CURSOR_PATH := "user://dot_chat_relay_cursor.json"
 
 ## A line arrived from the website and was announced in game.
@@ -102,6 +105,14 @@ var permission_fn: Callable = Callable()
 ## without revoking anybody's in-game rights.
 var command_flag: String = "rcon"
 
+## `() -> Array[Dictionary]`, each `{name, usage, description, chat_allowed, permission}`.
+##
+## Re-read on every [method publish_commands] rather than captured, because the answer
+## changes when a module loads: a callable that closed over a list would publish the table
+## as it was at boot, for ever.
+var commands_fn: Callable = Callable()
+
+var _commands_published: int = 0
 var _started: bool = false
 var _queue: Array[Dictionary] = []
 var _cursor: String = ""
@@ -181,6 +192,13 @@ func start() -> DotResult:
 
 	_started = true
 
+	# Published once at start, and again whenever the host says the table changed. It is
+	# fire-and-forget on purpose: a site that cannot be told what this server accepts is a
+	# site whose command MENU is empty, which is a worse autocomplete and not a broken
+	# server -- so a failure here must never stop the relay that carries the chat itself.
+	if config.publish_commands:
+		publish_commands()
+
 	DotLog.info(CHANNEL, "chat relay started", {
 		"poll": config.poll_seconds,
 		"commands": config.allow_commands,
@@ -188,6 +206,57 @@ func start() -> DotResult:
 	})
 
 	return DotResult.success(self)
+
+
+# --- What this server accepts ----------------------------------------------
+
+## Tells the site which commands it may offer when somebody types the prefix.
+##
+## [b]The list has to come from here because only here has it.[/b] A member typing `/` on a
+## web page is typing at a machine the site does not control, whose command table depends on
+## which game is loaded and which modules an operator installed -- so a list held by the site
+## would be stale the first time either changed. Call it again after loading or unloading a
+## module; [member commands_fn] is re-read every time.
+##
+## [b]Nothing published here is a permission.[/b] What a person may actually run is decided
+## here, per line, by [member permission_fn] against this server's own admin file. This
+## decides only what is worth OFFERING -- and offering something that will always be refused
+## teaches people the site is broken, which is why the chat-allowed flag travels with it.
+func publish_commands() -> void:
+	if not _started and not config.enabled:
+		return
+	if client == null or not commands_fn.is_valid():
+		return
+
+	var listed: Variant = commands_fn.call()
+	if not (listed is Array):
+		DotLog.warn(CHANNEL, "commands_fn did not answer with an array", {
+			"got": type_string(typeof(listed)),
+		})
+		return
+
+	var rows: Array[Dictionary] = []
+	for entry: Variant in listed as Array:
+		if entry is Dictionary:
+			rows.append(entry as Dictionary)
+
+	var res: Variant = await client.call(
+		"post_integration", PATH_COMMANDS, {"commands": rows}
+	)
+	var result := res as DotResult
+
+	if result == null or not result.ok:
+		# Info, not a warning. A deployment whose backbone has no such endpoint -- an older
+		# site, or one that never enabled the feature -- would otherwise print a red line
+		# every time a module loaded, and a red line about a condition that is normal is how
+		# a real one stops being read.
+		DotLog.info(CHANNEL, "the command list was not published", {
+			"why": str(result.error) if result != null else "no result",
+		})
+		return
+
+	_commands_published = rows.size()
+	DotLog.debug(CHANNEL, "published the command list", {"count": rows.size()})
 
 
 # --- Game -> site ----------------------------------------------------------
@@ -416,8 +485,18 @@ func _handle_command(
 		allowed = bool(permission_fn.call(uid, command_flag))
 
 	if not allowed:
+		# The uid is in the line, and that is the point rather than an aside. An operator
+		# setting this up has no other way to learn what a site member's uid IS -- it is
+		# derived from a database id they cannot see -- so the first refusal is what tells
+		# them which key to add to the admin file. Without that, granting the first admin
+		# is a puzzle with no clue in it.
 		DotLog.info(CHANNEL, "a relayed command was refused", {
-			"uid": uid, "command": command, "flag": command_flag,
+			"uid": uid,
+			"command": command,
+			"flag": command_flag,
+			"fix": "add '%s' to the server's admin file with the '%s' flag" % [
+				uid, command_flag,
+			],
 		})
 		site_command.emit(uid, command, false)
 		return
