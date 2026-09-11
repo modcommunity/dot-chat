@@ -14,6 +14,7 @@ extends Node
 ## [/codeblock]
 
 const SECTIONS := 16
+const CHECKS := 149
 
 ## Built rather than typed. A source file containing a real zero-width space is one
 ## whose diff, review and grep all lie about what it says.
@@ -140,6 +141,15 @@ func _run() -> void:
 		get_tree().quit(1)
 		return
 
+	# The total the section counter cannot be. A runtime error inside a section aborts
+	# that function, and the counter is satisfied because the section had already
+	# announced itself. See docs/testing.md.
+	if _passed + _failed != CHECKS:
+		print("ERROR: %d checks ran, %d expected. A section aborted part-way." % [
+			_passed + _failed, CHECKS
+		])
+		get_tree().quit(1)
+		return
 	get_tree().quit(1 if _failed > 0 else 0)
 
 
