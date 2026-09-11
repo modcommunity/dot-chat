@@ -113,6 +113,64 @@ dictionaries, so the browser constraints in the family CLAUDE.md do not reach it
 The one platform note is that `DotChatFormat` produces BBCode, which a `Label` will
 draw literally — use `plain()` there.
 
+## The website relay
+
+`DotChatRelay` joins this server's chat to its room on the website. The site has had
+both halves of the contract since before this addon existed — `LiveChatScope.GAME`,
+which its own model calls *"relayed in-game chat"*, `POST /api/integration/v1/chat`
+inbound and `GET /api/integration/v1/chat/outbound` outbound — and **nothing in any of
+the thirty-four projects here had ever called either.** The website half was finished
+and talking to nobody.
+
+**The backbone client is an `Object` and is never named.** dot-chat depends on dot-core
+and nothing else; a script that so much as *mentions* `DotBackboneClient` fails to
+compile in a project without dot-auth, which is most of them. The contract is two
+methods, `post_integration` and `get_integration`, and that the suite substitutes a
+plain `RefCounted` for both is the proof the seam is real. Same shape as
+`DotStatsReporter`.
+
+**Nothing here decides a permission.** A relayed command is resolved to a uid and handed
+to the host's `permission_fn` — dot-server's admin manager, the same file, the same
+flags, as that person typing it in game. A relay with its own permission model would be
+a second answer to "may this person do this" and the two would drift.
+
+**The uid mapping is a seam, not a constant.** dot-auth namespaces every identity by its
+provider — `backbone:clx8f2k0`, `steam:7656…`, `local:admin` — so which namespace an
+admin file is keyed by depends on who authenticated them. `author_uid_prefix` covers the
+prefix case and `uid_for_author` replaces the whole mapping for a server running its own
+auth back-end.
+
+### The bug the suite found on the first run
+
+**A line from the website was posted straight back to the website.** `announce_from`
+dispatches a relayed line as an ordinary `SAY` — which is right, it is something a person
+said and should read like one — and `message_accepted` fires *synchronously* inside it,
+so the outbound filter saw it and sent it.
+
+It would not have looped for ever, which is exactly what makes it worth writing down: the
+site's outbound half returns only `USER`-kind rows and what the relay posts becomes
+`GAME`-kind, so the second copy would have stopped there. Every web line would simply have
+appeared twice, the second attributed to the game. **A loop is obvious and this is not** —
+it reads as a display bug on the website, which is the half nobody debugging a game
+server would look at.
+
+The guard is a flag rather than a match on the sender key, because a person signed into
+the website *and* playing on the server has the same uid in both places: keying on that
+would have silently stopped relaying the in-game lines of every admin who left a tab open.
+
+### `announce_from`, and why `announce` was not enough
+
+`submit` takes a peer, because a line normally comes from somebody connected.
+`announce` takes none, because the server speaking is nobody. **A relayed line is
+neither** — it has an author, a name and a uid, and no peer at all. Without it the only
+options were announcing anonymously or baking the author into the text, which puts a
+user-controlled string where a sender name belongs and loses it for anything reading the
+message rather than drawing it.
+
+Both the text *and* the sender name go through `DotChatFilter`, for a stronger reason
+than an ordinary announcement: both were typed on a web page by somebody who is not on
+this server.
+
 ## Validating changes
 
 ```bash
@@ -121,7 +179,7 @@ find . -name '*.gd' -not -path './.godot/*' | while read f; do
     godot --headless --path . --check-only --script "res://${f#./}"
 done
 godot --headless --path . res://examples/chat_selftest.tscn
-# 14 sections, 120 checks, all offline. Exits non-zero on any failure.
+# 16 sections, 143 checks, all offline. Exits non-zero on any failure.
 ```
 
 The suite counts its sections and fails if fewer ran than it has, because a script
@@ -141,4 +199,5 @@ report "all passed" while quietly running fewer checks than it contains.
   in one.
 - **Cross-server chat.** A router is one server's. A backbone-relayed channel would
   be a `DotChatChannel` with a `MEMBERS` scope and a source that is not this process,
-  and nothing about the design refuses it.
+  and nothing about the design refuses it. `DotChatRelay` is the first thing to take
+  that door: it does not add a channel, it announces into an existing one.

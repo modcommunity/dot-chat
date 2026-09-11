@@ -367,6 +367,70 @@ func announce(
 	return _dispatch(message, chan, _recipients_for(message, chan))
 
 
+## An announcement that has an author who is not a peer here.
+##
+## [b]The gap this fills is a real one.[/b] [method submit] takes a peer, because a line
+## normally comes from somebody connected; [method announce] takes none, because the
+## server speaking is nobody. A line relayed from the website is neither — it has an
+## author, a name and a uid, and no peer at all — and without this it could only be
+## announced anonymously or by baking the name into the text, which puts a
+## user-controlled string where a sender name belongs and loses it for anything reading
+## the message rather than displaying it.
+##
+## [param sender_key] is whatever the host keys a sender by — a uid for a relayed line.
+## It is not a peer and is never resolved to one.
+func announce_from(
+	text: String,
+	sender_name: String,
+	sender_key: String = "",
+	channel_id: StringName = &"",
+	kind: DotChatMessage.Kind = DotChatMessage.Kind.SAY
+) -> DotResult:
+	if not _started:
+		var started := start()
+		if not started.ok:
+			return started
+
+	var target := channel_id
+	if target == &"":
+		target = default_channel()
+
+	var chan := channel(target)
+	if chan == null:
+		return DotResult.fail(
+			DotError.CODE_STATE, "No such chat channel.", String(target)
+		)
+
+	# Sanitised exactly as an announcement is, and for a stronger reason: this text was
+	# typed on a web page by somebody who is not on this server, and the sender NAME came
+	# from there too. Both go through the filter.
+	var cleaned := text.strip_edges()
+	var name_cleaned := sender_name.strip_edges()
+
+	if rules.escape_markup:
+		cleaned = DotChatFilter.escape_bbcode(
+			DotChatFilter.strip_invisible_chars(
+				DotChatFilter.strip_controls(cleaned, rules.allow_newlines)
+			)
+		)
+		name_cleaned = DotChatFilter.escape_bbcode(
+			DotChatFilter.strip_invisible_chars(
+				DotChatFilter.strip_controls(name_cleaned, false)
+			)
+		)
+
+	if cleaned == "":
+		return DotResult.fail(DotError.CODE_INVALID, "The announcement is empty.")
+
+	if cleaned.length() > rules.max_length:
+		cleaned = cleaned.substr(0, rules.max_length)
+
+	var message := DotChatMessage.make(
+		kind, target, sender_key, name_cleaned, cleaned
+	)
+	return _dispatch(message, chan, _recipients_for(message, chan))
+
+
 ## A line only [param peer] sees.
 ##
 ## [b]Deliberately not kept in history.[/b] History is what a moderator reads back

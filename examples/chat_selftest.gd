@@ -13,7 +13,7 @@ extends Node
 ## godot --headless --path . res://examples/chat_selftest.tscn
 ## [/codeblock]
 
-const SECTIONS := 14
+const SECTIONS := 16
 
 ## Built rather than typed. A source file containing a real zero-width space is one
 ## whose diff, review and grep all lie about what it says.
@@ -38,6 +38,34 @@ class FakeMuteSource extends Node:
 
 ## The host's session table, in the smallest form that still has every field the
 ## router asks for.
+## A backbone that records what it was sent and answers what it was told to.
+##
+## [b]Duck-typed on purpose, exactly as the real one is.[/b] `DotChatRelay.client` is an
+## [Object] and is never named, because a script mentioning `DotBackboneClient` fails to
+## compile in a project without dot-auth — which is this one. That the relay's own suite
+## can substitute a plain RefCounted here is the proof that the seam is real.
+class FakeBackbone extends RefCounted:
+	var posted: Array[Dictionary] = []
+	var outbound: Array[Dictionary] = []
+	var newest: String = ""
+	var queries: Array[Dictionary] = []
+	var fail_post: bool = false
+
+	func post_integration(path: String, body: Dictionary) -> DotResult:
+		if fail_post:
+			return DotResult.fail(DotError.CODE_NETWORK, "nope")
+		posted.append({"path": path, "body": body})
+		return DotResult.success({"ok": true, "id": str(posted.size())})
+
+	func get_integration(path: String, query: Dictionary = {}) -> DotResult:
+		queries.append({"path": path, "query": query.duplicate(true)})
+		var rows := outbound.duplicate(true)
+		outbound.clear()
+		return DotResult.success({
+			"ok": true, "messages": rows, "newest": newest,
+		})
+
+
 class FakeWorld extends RefCounted:
 	var names: Dictionary = {}
 	var keys: Dictionary = {}
@@ -98,6 +126,8 @@ func _run() -> void:
 	_test_backlog()
 	_test_client()
 	_test_format()
+	await _test_relay_out()
+	await _test_relay_in()
 
 	_line("")
 	_line("%d sections, %d passed, %d failed" % [_section_count, _passed, _failed])
@@ -763,6 +793,209 @@ func _test_format() -> void:
 		DotChatFormat.plain(message).contains("push [B]"),
 		"the plain form puts the brackets back for a destination with no parser"
 	)
+
+
+# --- The website relay -----------------------------------------------------
+
+func _relay_world() -> Array:
+	var world := FakeWorld.new()
+	world.add(1, "Ada")
+	world.add(2, "Bo")
+
+	var router := DotChatRouter.new()
+	router.rules = DotChatRules.new()
+	world.wire_up(router)
+	add_child(router)
+
+	var backbone := FakeBackbone.new()
+	var cfg := DotChatRelayConfig.new()
+	cfg.enabled = true
+	cfg.cursor_path = "user://relay_selftest_cursor.json"
+
+	var relay := DotChatRelay.new()
+	relay.router = router
+	relay.config = cfg
+	relay.client = backbone
+	relay.register_as = &""
+
+	return [world, router, backbone, cfg, relay]
+
+
+func _test_relay_out() -> void:
+	_section("relay: what the game says reaches the site")
+
+	var bits := _relay_world()
+	var world: FakeWorld = bits[0]
+	var router: DotChatRouter = bits[1]
+	var backbone: FakeBackbone = bits[2]
+	var cfg: DotChatRelayConfig = bits[3]
+	var relay: DotChatRelay = bits[4]
+
+	# No poll timer for this half — receive_site_chat off keeps the test to one direction.
+	cfg.receive_site_chat = false
+	add_child(relay)
+	await get_tree().process_frame
+
+	var said := router.submit(1, router.default_channel(), "hello from the match")
+	_check(said.ok, "a player says something")
+	await get_tree().process_frame
+
+	_check(backbone.posted.size() == 1,
+		"and exactly one line was posted (%d)" % backbone.posted.size())
+
+	if backbone.posted.size() > 0:
+		var body: Dictionary = backbone.posted[0]["body"]
+		_check(str(backbone.posted[0]["path"]) == "chat", "to the chat endpoint")
+		_check(str(body.get("body", "")) == "hello from the match", "with the text")
+		var player: Dictionary = body.get("player", {})
+		_check(str(player.get("name", "")) == "Ada", "and the player's name")
+		_check(player.has("gameId"), "and a game id the site can key on")
+
+	# The server's own announcements must NOT go out: they are the join notices, the
+	# vote prompts and the relayed lines themselves, which would be a loop.
+	var before := backbone.posted.size()
+	var _a := router.announce("the map is changing")
+	await get_tree().process_frame
+	_check(backbone.posted.size() == before,
+		"a SYSTEM announcement is not relayed, because that is the loop")
+
+	# And a line arriving FROM the website must not be posted straight back TO it.
+	#
+	# Through the relay's own delivery path, which is the one that happens: calling
+	# `announce_from` directly is a host announcing something of its own, and that is a
+	# line the website should see. The loop is specifically the relay's own echo.
+	relay._deliver({
+		"id": "1", "author": "Ada", "authorId": "ada1",
+		"body": "hi from the web", "muted": false,
+	})
+	await get_tree().process_frame
+	_check(backbone.posted.size() == before,
+		"nor is a line the relay itself just announced — that is the echo")
+
+	relay.queue_free()
+	router.queue_free()
+
+
+func _test_relay_in() -> void:
+	_section("relay: what the site says reaches the game, and commands")
+
+	var bits := _relay_world()
+	var world: FakeWorld = bits[0]
+	var router: DotChatRouter = bits[1]
+	var backbone: FakeBackbone = bits[2]
+	var cfg: DotChatRelayConfig = bits[3]
+	var relay: DotChatRelay = bits[4]
+
+	cfg.send_game_chat = false
+	cfg.allow_commands = true
+
+	var ran: Array[Dictionary] = []
+	relay.command_fn = func(
+		uid: String, command: String, args: PackedStringArray, source: int
+	) -> void:
+		ran.append({
+			"uid": uid, "command": command, "args": Array(args), "source": source,
+		})
+
+	var asked: Array[Dictionary] = []
+	relay.permission_fn = func(uid: String, flag: String) -> bool:
+		asked.append({"uid": uid, "flag": flag})
+		return uid == "backbone:boss"
+
+	add_child(relay)
+	await get_tree().process_frame
+
+	# An ordinary line from the website.
+	backbone.outbound = [{
+		"id": "10", "author": "Cy", "authorId": "cy1",
+		"body": "anybody on?", "muted": false,
+	}]
+	backbone.newest = "10"
+
+	var heard: Array[Dictionary] = []
+	router.message_accepted.connect(
+		func(m: DotChatMessage, _r: PackedInt32Array) -> void:
+			heard.append({"name": m.sender_name, "text": m.text, "key": m.sender_key})
+	)
+
+	relay._poll()
+	await get_tree().process_frame
+
+	_check(heard.size() == 1,
+		"a site line is announced in game (%d)" % heard.size())
+
+	if heard.size() > 0:
+		_check(str(heard[0]["text"]) == "anybody on?", "with its text")
+		_check(str(heard[0]["name"]).contains("Cy"), "attributed to its author")
+		_check(str(heard[0]["name"]).contains("WEB"),
+			"and tagged so a player can tell it is not somebody standing there")
+		_check(str(heard[0]["key"]) == "backbone:cy1",
+			"keyed by the uid the site id maps to, which is what a permission needs")
+
+	# The cursor moved, which is what stops an hour of history arriving on the next poll.
+	_check(relay.describe()["cursor"] == "10", "and the cursor advanced")
+
+	# A command from somebody without the flag.
+	backbone.outbound = [{
+		"id": "11", "author": "Cy", "authorId": "cy1",
+		"body": "/arena_map dm_box", "muted": false,
+	}]
+	backbone.newest = "11"
+	relay._poll()
+	await get_tree().process_frame
+
+	_check(asked.size() == 1, "a relayed command asks the SERVER for permission")
+	_check(ran.is_empty(), "and is refused when the server says no")
+
+	# And from somebody with it.
+	backbone.outbound = [{
+		"id": "12", "author": "Boss", "authorId": "boss",
+		"body": "/arena_map dm_atrium", "muted": false,
+	}]
+	backbone.newest = "12"
+	relay._poll()
+	await get_tree().process_frame
+
+	_check(ran.size() == 1, "and runs when the server says yes")
+	if ran.size() > 0:
+		_check(str(ran[0]["command"]) == "arena_map", "with the command")
+		_check(Array(ran[0]["args"]) == ["dm_atrium"], "and its arguments")
+		_check(str(ran[0]["uid"]) == "backbone:boss", "as the site author's uid")
+		# 3 is CHAT — the conservative default, which several games deliberately
+		# withhold from their map commands. A relay that shipped anything looser would
+		# overrule a policy each game made on purpose.
+		_check(int(ran[0]["source"]) == 3, "and at the configured trust level")
+
+	# With commands off, the same line is text and nothing else.
+	cfg.allow_commands = false
+	var before_ran := ran.size()
+	backbone.outbound = [{
+		"id": "13", "author": "Boss", "authorId": "boss",
+		"body": "/arena_map dm_box", "muted": false,
+	}]
+	backbone.newest = "13"
+	relay._poll()
+	await get_tree().process_frame
+	_check(ran.size() == before_ran,
+		"with allow_commands off a relayed command runs nothing")
+
+	# A muted line is dropped, and the cursor still moves past it — otherwise every
+	# poll from here on re-fetches and re-skips the same row for ever.
+	cfg.skip_muted = true
+	var heard_before := heard.size()
+	backbone.outbound = [{
+		"id": "14", "author": "Cy", "authorId": "cy1",
+		"body": "muted line", "muted": true,
+	}]
+	backbone.newest = "14"
+	relay._poll()
+	await get_tree().process_frame
+	_check(heard.size() == heard_before, "a muted site line is dropped")
+	_check(relay.describe()["cursor"] == "14",
+		"and the cursor still moves past it, or it is re-fetched for ever")
+
+	relay.queue_free()
+	router.queue_free()
 
 
 # --- Harness ---------------------------------------------------------------
