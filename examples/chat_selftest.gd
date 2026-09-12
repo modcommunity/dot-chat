@@ -14,7 +14,7 @@ extends Node
 ## [/codeblock]
 
 const SECTIONS := 16
-const CHECKS := 149
+const CHECKS := 154
 
 ## Built rather than typed. A source file containing a real zero-width space is one
 ## whose diff, review and grep all lie about what it says.
@@ -199,6 +199,26 @@ func _test_message_wire() -> void:
 
 	var bad := DotChatMessage.from_dictionary({"k": "nonsense", "m": "hi"})
 	_check(not bad.ok and bad.code() == DotError.CODE_PARSE, "a bad kind fails to parse")
+
+	# [b]The one that shipped.[/b] Every key here has a default, so before this check any
+	# dictionary at all parsed. dot-server's chat manager sends a payload of its own —
+	# `{kind, userid, name, text, admin}` — and a client handed one filed a perfectly
+	# valid message whose text, sender and channel were all empty. Two games in this
+	# family drew every line a player typed as ": ", and nothing errored anywhere,
+	# because the message HAD parsed.
+	var foreign := DotChatMessage.from_dictionary({
+		"kind": "all", "userid": 3, "name": "Alice", "text": "hello everyone",
+	})
+	_check(
+		not foreign.ok and foreign.code() == DotError.CODE_PARSE,
+		"a dictionary that is not this wire form is refused, rather than parsing as a"
+			+ " message with no text, no sender and no channel"
+	)
+	# The discriminator is the KEY, not the value: a system line can legitimately be empty.
+	_check(
+		DotChatMessage.from_dictionary({"m": ""}).ok,
+		"while an empty line that IS this wire form still parses"
+	)
 
 
 func _test_channel_validation() -> void:
@@ -843,8 +863,19 @@ func _test_relay_out() -> void:
 
 	# No poll timer for this half — receive_site_chat off keeps the test to one direction.
 	cfg.receive_site_chat = false
+
+	# A client told otherwise draws no chat box and then talks to nobody.
+	_check(not relay.is_carrying(), "a relay that has not started carries nothing")
+
 	add_child(relay)
 	await get_tree().process_frame
+
+	_check(relay.is_carrying(), "a started, enabled relay with a client carries chat")
+
+	cfg.send_game_chat = false
+	# `enabled` is only one of the four things that have to be true.
+	_check(not relay.is_carrying(), "a receive-only relay does NOT carry what the game says")
+	cfg.send_game_chat = true
 
 	var said := router.submit(1, router.default_channel(), "hello from the match")
 	_check(said.ok, "a player says something")

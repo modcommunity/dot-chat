@@ -70,6 +70,22 @@ for containing brackets — and the limit they were told about is the one they c
 count. The same ordering applies in `clean_name`, where truncating an escaped string
 can cut `[lb]` in half and leave `[l` in the middle of a name, which is markup again.
 
+## `from_dictionary` accepted any dictionary at all, and two games drew every line blank
+
+Every field on the wire has a default — `n`, `t`, `c`, `k`, `m` all fall back — so a `Dictionary` that was not this wire form parsed into a *valid* message whose text, sender and channel were all empty.
+
+dot-server's own chat manager sends a payload of its own shape: `{kind, userid, name, text, admin}`. A client handed one called `DotChatClient.receive`, got `ok`, filed a message with no text, and drew it. Two games in this family put every line a player typed on screen as `": "`, and the code doing it was *correct* — it was being handed a message that had parsed. Both had a fallback for exactly that payload and **neither fallback was reachable**, because `receive` never failed.
+
+`m` is the discriminator, because `to_dictionary` always writes it — empty text included — and nothing else that reaches a chat client has it. The key is what is checked, never the value: a system line is legitimately empty.
+
+That is the whole class of bug this family keeps finding, in its purest form: **a parser with a default for every field cannot refuse anything**, so "it parsed" stops meaning "it was ours".
+
+## Whether anything else is carrying the conversation
+
+`DotChatRelay.is_carrying()` answers "does a line typed in game actually reach the site right now", and **four things have to be true**: started, enabled, `send_game_chat`, and a backbone client. A relay that is enabled with no client refused to start; one configured to receive only carries the site's lines inward and none of the game's outward. Answering "enabled" to either tells a client the conversation is carried when it is not, and what that looks like is a room full of people talking to a page that never hears them.
+
+It exists because the client wants the answer. dot-server hands it to a joining player — see its `DotChatManager.chat_state` — and a client decides from it whether to draw a chat box in front of the game at all. Nothing here knows that; this only answers honestly.
+
 ## Gags: the method nothing was calling
 
 `DotModerationManager` has published `is_chat_muted(peer)` since it was written, and
@@ -179,11 +195,7 @@ site is broken, which is why the source gate travels with it.
 
 That gate is the part worth reading twice. `DotConsole.command_document(source)` applies
 **the same source check `_run_command` applies**, so the menu is built at the relay's own
-`command_source`: a relay running as CHAT offers only what is marked `with_chat()`, and a
-relay running as RCON offers everything RCON reaches. A menu built from `chat_allowed` alone
-would hide an operator's whole toolbox from a deployment that deliberately made its site
-admins remote administrators, and offer a records server's map change to somebody whose
-every attempt is refused.
+`command_source`: a relay running as CHAT offers what that server takes from chat — with `sv_chat_commands` on, the default, everything that has not called `no_chat()` — and a relay running as RCON offers everything RCON reaches. A menu built from a per-command flag alone would hide an operator's whole toolbox from a deployment that deliberately made its site admins remote administrators, and, on a server that closed chat commands, offer a table where every entry is refused.
 
 A backbone that refuses the list does not take the relay down with it: an older site with no
 such endpoint is a menu that is empty, not a server whose chat has stopped. It logs at info
@@ -211,7 +223,7 @@ find . -name '*.gd' -not -path './.godot/*' | while read f; do
     godot --headless --path . --check-only --script "res://${f#./}"
 done
 godot --headless --path . res://examples/chat_selftest.tscn
-# 16 sections, 149 checks, all offline. Exits non-zero on any failure.
+# 16 sections, 154 checks, all offline. Exits non-zero on any failure.
 ```
 
 The suite counts its sections and fails if fewer ran than it has, because a script

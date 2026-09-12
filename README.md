@@ -100,10 +100,20 @@ router.command_entered.connect(func(peer, command, args, raw):
 
 Which is how dot-server's chat commands and dot-vote's `!rtv` reach a player without either addon knowing this one exists.
 
+## A window to draw it in
+
+dot-chat ships no art, for dot-ui's reason: an addon that draws its own chat window is an addon every game fights. [dot-ui](https://github.com/modcommunity/dot-ui)'s `DotChatWindow` is that window — a log, a line to type in, and a key that opens it — and it knows nothing about chat in return. Point its `submitted` at `DotChatClient.compose` and feed what arrives back through `add_message`.
+
+## Is anybody else carrying this conversation?
+
+`DotChatRelay.is_carrying()` answers whether a line typed in game actually reaches the site right now. Four things have to be true — started, enabled, sending game chat, and holding a credential — and a relay that is merely *enabled* is not carrying anything. A client told otherwise is a room full of people talking to a page that never hears them.
+
+[dot-server](https://github.com/modcommunity/dot-server) hands that answer to each joining player, which is what lets a client decide whether to draw a chat box in front of the game or leave it to the page it is embedded in.
+
 ## Validating
 
 ```bash
 godot --headless --path . --import
 godot --headless --path . res://examples/chat_selftest.tscn
-# 120 checks, all offline. Exits non-zero on any failure.
+# 154 checks, all offline. Exits non-zero on any failure.
 ```

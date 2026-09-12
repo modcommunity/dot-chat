@@ -564,6 +564,26 @@ func _default_uid_for_author(author_id: String) -> String:
 
 # --- Reporting -------------------------------------------------------------
 
+## Whether a line typed in game actually reaches the site right now.
+##
+## [b]Four things have to be true, and [member DotChatRelayConfig.enabled] is only one of
+## them.[/b] A relay that is enabled with no backbone client is a relay that refused to
+## start; one configured to receive only is a relay that carries the site's lines inward
+## and none of the game's outward. Answering "enabled" to any of those tells a client the
+## conversation is being carried when it is not, and the visible result is a game whose
+## players think they are talking to a page that never hears them.
+##
+## This is the answer [code]DotChatManager.relay_fn[/code] wants.
+func is_carrying() -> bool:
+	return (
+		_started
+		and config != null
+		and config.enabled
+		and config.send_game_chat
+		and client != null
+	)
+
+
 func describe() -> Dictionary:
 	return {
 		"enabled": config != null and config.enabled,

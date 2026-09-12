@@ -122,12 +122,16 @@ extends DotConfig
 
 ## How much a relayed command is trusted, as a [code]DotCmdContext.Source[/code].
 ##
-## [b]3 is CHAT, and it is the default for a reason that bit.[/b] dot-server refuses a
-## CHAT-sourced command unless it is marked [code]with_chat()[/code], and several games
-## deliberately withhold that from their map commands — game-g2gfast's suite asserts it,
-## because a map change destroys every run in progress and a records server does not let
-## a player do that by typing. A relay defaulting to anything looser would quietly
-## overrule a policy each game made on purpose.
+## [b]3 is CHAT, and it is the default because a relayed line is somebody typing.[/b] On a
+## dot-server that leaves `sv_chat_commands` on — the default — a CHAT-sourced line reaches
+## every command that has not refused chat outright, and the flags the person actually holds
+## decide the rest. That is the same treatment a player in the game gets, which is what a
+## website chat box is.
+##
+## It used to mean considerably less: dot-server refused a CHAT-sourced command unless it
+## was marked [code]with_chat()[/code], so a site administrator changing the map had to be
+## promoted to RCON to do it. The commands that genuinely must not be typed say so
+## themselves now, with [code]no_chat()[/code], and no source setting overrules that.
 ##
 ## 2 is RCON, which is how an operator says "my site admins are remote administrators".
 ## That reaches everything RCON reaches, so it is a decision rather than a default — and

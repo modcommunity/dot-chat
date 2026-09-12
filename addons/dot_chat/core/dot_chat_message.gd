@@ -171,6 +171,22 @@ func to_dictionary() -> Dictionary:
 
 
 static func from_dictionary(data: Dictionary) -> DotResult:
+	# [b]A dictionary that is not this wire form must be REFUSED, not read as an empty
+	# message.[/b] Every key here has a default, so without this check any dictionary at
+	# all parses: dot-server's chat manager sends `{kind, userid, name, text, admin}` and
+	# it came back as a well-formed message whose text, sender and channel were all empty.
+	# Two games drew every line a player typed as ": " and the receiving code looked
+	# correct, because it WAS correct — it was being handed a message that had parsed.
+	#
+	# `m` is the discriminator because [method to_dictionary] always writes it, empty text
+	# included, and nothing else that reaches a chat client has it.
+	if not data.has("m"):
+		return DotResult.fail(
+			DotError.CODE_PARSE,
+			"Not a chat message: no text field.",
+			"keys: %s" % ", ".join(PackedStringArray(data.keys()))
+		)
+
 	var kind_value := kind_from_name(str(data.get("k", "say")))
 	if kind_value < 0:
 		return DotResult.fail(
