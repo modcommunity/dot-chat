@@ -117,3 +117,7 @@ godot --headless --path . --import
 godot --headless --path . res://examples/chat_selftest.tscn
 # 154 checks, all offline. Exits non-zero on any failure.
 ```
+
+## Licence
+
+MIT. See [LICENSE](LICENSE).
