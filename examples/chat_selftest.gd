@@ -13,8 +13,8 @@ extends Node
 ## godot --headless --path . res://examples/chat_selftest.tscn
 ## [/codeblock]
 
-const SECTIONS := 16
-const CHECKS := 154
+const SECTIONS := 17
+const CHECKS := 167
 
 ## Built rather than typed. A source file containing a real zero-width space is one
 ## whose diff, review and grep all lie about what it says.
@@ -121,6 +121,7 @@ func _run() -> void:
 	_test_history()
 	_test_router_basics()
 	_test_router_audience()
+	_test_router_groups()
 	_test_router_limits()
 	_test_router_gag()
 	_test_router_commands()
@@ -551,6 +552,116 @@ func _test_router_audience() -> void:
 		"nobody may type into a server-only channel"
 	)
 	_check(router.announce("the map is changing", &"news").ok, "the server may")
+
+	router.queue_free()
+
+
+## A party channel: one channel id, a conversation per party.
+##
+## The bug this exists for: [code]membership_fn(peer, channel)[/code] is never told the
+## sender, so a "party" channel built on it reached every party member on the server.
+func _test_router_groups() -> void:
+	_section("router: grouped members channels")
+
+	var world := FakeWorld.new()
+	world.add(1, "Ada")
+	world.add(2, "Bo")
+	world.add(3, "Cy")
+	world.add(4, "Di")
+	world.add(5, "Ed")
+
+	# Ada and Bo are one party, Cy and Di another, Ed is in none.
+	var parties := {1: &"p100", 2: &"p100", 3: &"p200", 4: &"p200"}
+
+	var router := _make_router(world)
+
+	# The old shape, unchanged: a plain members channel answers membership alone, which
+	# is exactly why it could not carry party chat.
+	var plain := DotChatChannel.make(&"inparty", "In a party", DotChatChannel.Scope.MEMBERS)
+	router.add_channel(plain)
+	router.membership_fn = func(peer: int, _channel: StringName) -> bool:
+		return parties.has(peer)
+	router.submit(1, &"inparty", "hi")
+	var plain_to: Array = world.sent[-1]["to"]
+	_check(
+		plain_to.size() == 4 and plain_to.has(3) and not plain_to.has(5),
+		"an ungrouped members channel still reaches every member (backward compatible)"
+	)
+	router.membership_fn = Callable()
+
+	var party := DotChatChannel.group(&"party", "Party")
+	_check(party.validate().ok and party.grouped, "the group factory makes a valid grouped channel")
+	router.add_channel(party)
+
+	router.submit(1, &"party", "no group_fn yet")
+	var closed_to: Array = world.sent[-1]["to"]
+	_check(
+		closed_to.size() == 1 and closed_to.has(1),
+		"a grouped channel with no group_fn reaches nobody but the sender"
+	)
+
+	router.group_fn = func(peer: int, _channel: StringName) -> StringName:
+		return parties.get(peer, &"")
+
+	router.submit(1, &"party", "Ada to her party")
+	var a_to: Array = world.sent[-1]["to"]
+	_check(
+		a_to.size() == 2 and a_to.has(1) and a_to.has(2),
+		"a party line reaches the sender's party and nobody else"
+	)
+
+	router.submit(4, &"party", "Di to hers")
+	var d_to: Array = world.sent[-1]["to"]
+	_check(
+		d_to.size() == 2 and d_to.has(3) and d_to.has(4) and not d_to.has(1),
+		"the other party's line stays in the other party"
+	)
+
+	var loner := router.submit(5, &"party", "anyone?")
+	_check(loner.ok, "a sender in no party is not refused")
+	var e_to: Array = world.sent[-1]["to"]
+	_check(
+		e_to.size() == 1 and e_to.has(5),
+		"a sender in no party reaches nobody but themselves"
+	)
+
+	router.announce("parties are forming", &"party")
+	var s_to: Array = world.sent[-1]["to"]
+	_check(
+		s_to.size() == 4 and not s_to.has(5),
+		"a server line reaches everybody in some party, and nobody in none"
+	)
+
+	# Both rules at once: membership says who may be in the channel at all.
+	router.membership_fn = func(peer: int, _channel: StringName) -> bool:
+		return peer != 2
+	router.submit(1, &"party", "Bo is muted out of the channel")
+	var m_to: Array = world.sent[-1]["to"]
+	_check(
+		m_to.size() == 1 and m_to.has(1),
+		"membership_fn still narrows a grouped channel"
+	)
+	router.membership_fn = Callable()
+
+	# The backlog runs the same test, so a joining player is not handed another party's
+	# lines even on a channel that keeps some.
+	party.backlog = 10
+	var bo_backlog := router.backlog_for(2)
+	var leaked := false
+	var own := false
+	for wire in bo_backlog:
+		if str(wire.get("m", "")) == "Di to hers":
+			leaked = true
+		if str(wire.get("m", "")) == "Ada to her party":
+			own = true
+	_check(own, "backlog hands a joiner their own party's lines")
+	_check(not leaked, "backlog never hands one party's lines to another")
+
+	var bad := DotChatChannel.make(&"teamgroup", "Nope", DotChatChannel.Scope.TEAM)
+	bad.grouped = true
+	_check(not bad.validate().ok, "only a members channel can be grouped")
+
+	_check(party.describe().contains("grouped"), "describe says a channel is grouped")
 
 	router.queue_free()
 

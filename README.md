@@ -77,13 +77,23 @@ That is a working chat system: everybody, team, whispers, `/me`, rate limits, re
 
 ## Channels
 
-A channel is a `Resource` with an audience rule. `EVERYONE`, `TEAM`, `RADIUS` (proximity chat), `DIRECT` (whispers) and `MEMBERS` (a party, a clan, the dead, the admins; the host answers `membership_fn`).
+A channel is a `Resource` with an audience rule. `EVERYONE`, `TEAM`, `RADIUS` (proximity chat), `DIRECT` (whispers) and `MEMBERS` (a clan, the dead, the admins; the host answers `membership_fn`).
 
 ```gdscript
 var proximity := DotChatChannel.make(&"near", "Nearby", DotChatChannel.Scope.RADIUS)
 proximity.radius = 20.0
 router.add_channel(proximity)
 ```
+
+**Party chat is a grouped members channel.** One channel id, one conversation per party: a line reaches only the people in the *sender's* party. `membership_fn` cannot do that on its own because it is never told who is speaking, so a party channel built on it reaches every party member on the server. Mark the channel `grouped` and give the router a `group_fn`:
+
+```gdscript
+router.add_channel(DotChatChannel.group(&"party", "Party"))
+router.group_fn = func(peer: int, _channel: StringName) -> StringName:
+    return StringName(parties.party_of(uid_of(peer)))   # "" for nobody's party
+```
+
+Somebody in no party reaches nobody but themselves, a grouped channel with no `group_fn` reaches nobody, and a line from the server reaches everybody who is in a party. Plain members channels are unchanged.
 
 Membership is asked, never stored: which team a peer is on is a fact your game owns and changes every round, and a second copy of it is the copy that goes stale.
 
@@ -115,7 +125,7 @@ dot-chat ships no art, for dot-ui's reason: an addon that draws its own chat win
 ```bash
 godot --headless --path . --import
 godot --headless --path . res://examples/chat_selftest.tscn
-# 154 checks, all offline. Exits non-zero on any failure.
+# 167 checks, all offline. Exits non-zero on any failure.
 ```
 
 ## Licence

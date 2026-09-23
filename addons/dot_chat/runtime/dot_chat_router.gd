@@ -117,6 +117,16 @@ var position_fn: Callable = Callable()
 ## [constant DotChatChannel.Scope.MEMBERS].
 var membership_fn: Callable = Callable()
 
+## [code]func(peer: int, channel: StringName) -> StringName[/code]: which group a peer is
+## in on that channel — a party id, a squad — or [code]&""[/code] for none. For a
+## [member DotChatChannel.grouped] channel, where a line reaches only the sender's group.
+##
+## [b]Separate from [member membership_fn] because that one is never told the sender.[/b]
+## Both may be set: [member membership_fn] then says who may be in the channel at all,
+## and this which conversation of it they are in. A line from the server has no sender
+## group and reaches every peer that has one.
+var group_fn: Callable = Callable()
+
 ## [code]func(peer: int) -> bool[/code]. Gates [member DotChatChannel.admin_only].
 var is_admin_fn: Callable = Callable()
 
@@ -711,6 +721,8 @@ func _receives(peer: int, message: DotChatMessage, chan: DotChatChannel) -> bool
 			return here.distance_to(there) <= chan.radius
 
 		DotChatChannel.Scope.MEMBERS:
+			if chan.grouped:
+				return _same_group(peer, message, chan)
 			if not membership_fn.is_valid():
 				return false
 			return bool(membership_fn.call(peer, chan.id))
@@ -719,6 +731,39 @@ func _receives(peer: int, message: DotChatMessage, chan: DotChatChannel) -> bool
 			return peer == message.target_peer
 
 	return false
+
+
+## Whether [param peer] is in the sender's group on a grouped channel.
+##
+## Fails closed at every step: no [member group_fn], a sender with no group, or a receiver
+## with none all answer false. The failure that matters here is one party reading another
+## party's line, and every ambiguous case resolving to "nobody" is what rules it out.
+func _same_group(peer: int, message: DotChatMessage, chan: DotChatChannel) -> bool:
+	if not group_fn.is_valid():
+		return false
+
+	if membership_fn.is_valid() and not bool(membership_fn.call(peer, chan.id)):
+		return false
+
+	var theirs := _group_of(peer, chan.id)
+
+	if theirs == &"":
+		return false
+
+	if message.is_from_server():
+		# An announcement to the channel is for everybody in any group of it; the server
+		# is not in a party and "the sender's group" means nothing for it.
+		return true
+
+	var senders := _group_of(message.sender_peer, chan.id)
+
+	# A sender with no group reaches nobody. Returning everybody instead is how a player
+	# who has just left their party would broadcast to every party on the server.
+	return senders != &"" and senders == theirs
+
+
+func _group_of(peer: int, channel_id: StringName) -> StringName:
+	return StringName(str(group_fn.call(peer, channel_id)))
 
 
 # --- Gags ------------------------------------------------------------------

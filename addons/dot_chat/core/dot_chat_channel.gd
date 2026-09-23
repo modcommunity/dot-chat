@@ -29,7 +29,8 @@ enum Scope {
 	## Exactly the sender and one named recipient.
 	DIRECT,
 	## Everybody the router's [code]membership_fn[/code] says belongs to this channel
-	## — a party, a clan, the admins, the dead.
+	## — a clan, the admins, the dead. For a channel of many small groups at once — a
+	## party each — set [member grouped] as well.
 	MEMBERS,
 }
 
@@ -54,6 +55,25 @@ enum Scope {
 
 ## Metres for [constant Scope.RADIUS]. Ignored otherwise.
 @export_range(1.0, 10000.0, 1.0) var radius: float = 25.0
+
+## For [constant Scope.MEMBERS]: a line reaches only the peers in the [i]sender's[/i]
+## group, as the router's [code]group_fn[/code] answers it.
+##
+## [b]Why membership alone cannot do this.[/b] [code]membership_fn(peer, channel)[/code]
+## is asked about the receiver and never hears who is talking, so on a server with three
+## parties a "party" channel built on it reaches all three — every party member on the
+## server reads every other party's line. The question a party channel needs is "same
+## group as the sender", and only a rule that is handed the sender can ask it.
+##
+## [b]Opt-in per channel, not per router.[/b] A router may carry a plain members channel
+## (the players on a run, the dead) beside a grouped one, and a router-wide switch would
+## make every one of those reach nobody the day a host set [code]group_fn[/code].
+##
+## A sender with no group reaches nobody but themselves, for the reason a teamless sender
+## on a team channel does. A grouped channel on a router with no [code]group_fn[/code]
+## reaches nobody either: failing closed is the only answer that cannot leak one party's
+## line to another.
+@export var grouped: bool = false
 
 ## Whether the sender receives their own line back.
 ##
@@ -120,6 +140,16 @@ static func team() -> DotChatChannel:
 	return out
 
 
+## One conversation per group — a party, a squad — on one channel id. See [member grouped].
+## No backlog, for the reason on [member backlog].
+static func group(p_id: StringName, p_display_name: String) -> DotChatChannel:
+	var out := make(p_id, p_display_name, Scope.MEMBERS)
+	out.grouped = true
+	out.prefix = "(%s)" % p_display_name.to_upper()
+	out.colour = Color(0.55, 0.75, 1.0)
+	return out
+
+
 ## Whispers. One channel serves every pair; the recipient is on the message.
 static func direct() -> DotChatChannel:
 	var out := make(&"whisper", "Whisper", Scope.DIRECT)
@@ -151,6 +181,13 @@ func validate() -> DotResult:
 			DotError.CODE_INVALID, "A radius channel needs a positive radius.", String(id)
 		)
 
+	if grouped and scope != Scope.MEMBERS:
+		return DotResult.fail(
+			DotError.CODE_INVALID,
+			"Only a members channel can be grouped.",
+			"%s: scope %s" % [String(id), scope_name()]
+		)
+
 	if backlog > history_limit:
 		return DotResult.fail(
 			DotError.CODE_INVALID,
@@ -166,8 +203,8 @@ func scope_name() -> String:
 
 
 func describe() -> String:
-	return "%s (%s, scope %s, history %d)" % [
-		String(id), display_name, scope_name(), history_limit
+	return "%s (%s, scope %s%s, history %d)" % [
+		String(id), display_name, scope_name(), ", grouped" if grouped else "", history_limit
 	]
 
 
