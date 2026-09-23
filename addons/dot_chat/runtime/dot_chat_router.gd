@@ -641,7 +641,12 @@ func _send(
 	return DotResult.success(message)
 
 
+## DEBUG, as dot-inventory does: on an authoritative server a refusal is the rules being
+## enforced -- a flood, a duplicate, a filtered line -- and WARN would fill the log with
+## the sound of the system working. The sender is told; this is for "why did my message
+## not go through", asked after the fact.
 func _refuse(peer: int, code: String, reason: String, detail: String = "") -> DotResult:
+	DotLog.debug(CHANNEL, "chat refused", {"peer": peer, "code": code, "reason": reason})
 	message_refused.emit(peer, code, reason)
 	return DotResult.failure(DotError.make(code, reason, detail))
 

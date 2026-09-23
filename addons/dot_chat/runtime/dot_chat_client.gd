@@ -150,6 +150,12 @@ func receive(wire: Dictionary) -> DotResult:
 
 	var parsed := DotChatMessage.from_dictionary(wire)
 	if not parsed.ok:
+		# WARN: this came from the server, which is the authority on the format, so a
+		# line it sent that this client cannot read is two builds disagreeing -- and the
+		# player simply never sees it.
+		DotLog.warn(CHANNEL, "a chat line from the server could not be read", {
+			"why": parsed.error.message if parsed.error != null else "",
+		})
 		return parsed
 
 	var message: DotChatMessage = parsed.value
@@ -161,6 +167,12 @@ func receive(wire: Dictionary) -> DotResult:
 		return DotResult.success(message)
 
 	if _last_seq > 0 and message.seq > _last_seq + 1:
+		# DEBUG, not WARN: the sequence is per router, so a line on a channel this client
+		# does not receive (another team's) is a gap too. Worth having when somebody says
+		# they missed a message; not worth an operator's attention on its own.
+		DotLog.debug(CHANNEL, "chat sequence gap", {
+			"from": _last_seq + 1, "to": message.seq,
+		})
 		gap_detected.emit(_last_seq + 1, message.seq)
 
 	if message.seq > 0:
@@ -184,18 +196,28 @@ func receive(wire: Dictionary) -> DotResult:
 ## the first live one for every player who joins.
 func receive_backlog(lines: Array) -> int:
 	var filed := 0
+	var unreadable := 0
 
 	for entry in lines:
 		if typeof(entry) != TYPE_DICTIONARY:
+			unreadable += 1
 			continue
 		var parsed := DotChatMessage.from_dictionary(entry as Dictionary)
 		if not parsed.ok:
+			unreadable += 1
 			continue
 		var message: DotChatMessage = parsed.value
 		history.append(message)
 		_last_seq = maxi(_last_seq, message.seq)
 		message_received.emit(message, message.channel)
 		filed += 1
+
+	# One line for the whole backlog rather than one per entry, for the reason receive()
+	# gives: the server sent it, so unreadable lines are a format disagreement.
+	if unreadable > 0:
+		DotLog.warn(CHANNEL, "some backlog chat lines could not be read", {
+			"unreadable": unreadable, "filed": filed,
+		})
 
 	return filed
 

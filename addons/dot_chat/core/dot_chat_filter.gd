@@ -23,7 +23,8 @@ extends RefCounted
 ## Every one returns a [DotResult]: a message that is empty once cleaned is refused,
 ## not sent as a blank line.
 
-const CHANNEL := "chat"
+# No log channel: static passes over a string, returning a DotResult. The refusal is the
+# sender's to see, and DotChatRouter -- which knows who sent it -- is what logs.
 
 ## Code points removed outright when [member DotChatRules.strip_invisible] is on.
 ##
