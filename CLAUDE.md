@@ -224,7 +224,7 @@ find . -name '*.gd' -not -path './.godot/*' | while read f; do
     godot --headless --path . --check-only --script "res://${f#./}"
 done
 godot --headless --path . res://examples/chat_selftest.tscn
-# 17 sections, 167 checks, all offline. Exits non-zero on any failure.
+# 17 sections, 168 checks, all offline. Exits non-zero on any failure.
 ```
 
 The suite counts its sections and fails if fewer ran than it has, because a script

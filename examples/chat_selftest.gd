@@ -14,7 +14,10 @@ extends Node
 ## [/codeblock]
 
 const SECTIONS := 17
-const CHECKS := 167
+const CHECKS := 168
+
+## Where the relay sections keep their cursor. Removed before every relay is built.
+const RELAY_CURSOR := "user://relay_selftest_cursor.json"
 
 ## Built rather than typed. A source file containing a real zero-width space is one
 ## whose diff, review and grep all lie about what it says.
@@ -951,7 +954,12 @@ func _relay_world() -> Array:
 	var backbone := FakeBackbone.new()
 	var cfg := DotChatRelayConfig.new()
 	cfg.enabled = true
-	cfg.cursor_path = "user://relay_selftest_cursor.json"
+	cfg.cursor_path = RELAY_CURSOR
+	# [b]The one file this suite writes that a relay reads back at start.[/b] The relay
+	# loads its cursor in `_ready`, so without this every run began where the last one
+	# stopped — cursor "14" — and a backbone that honoured `since` would have handed the
+	# relay-in section nothing at all on the second run. See docs/testing.md.
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(RELAY_CURSOR))
 
 	var relay := DotChatRelay.new()
 	relay.router = router
@@ -980,6 +988,12 @@ func _test_relay_out() -> void:
 
 	add_child(relay)
 	await get_tree().process_frame
+
+	_check(
+		str(relay.describe()["cursor"]) == "",
+		"a relay starts from no cursor, not from where a previous run stopped (%s)"
+			% str(relay.describe()["cursor"])
+	)
 
 	_check(relay.is_carrying(), "a started, enabled relay with a client carries chat")
 
