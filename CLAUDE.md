@@ -119,6 +119,7 @@ dot-moderation is unchanged.
   is not handed the other team's last twenty lines. Non-`EVERYONE` channels default
   to no backlog for the same reason.
 - **A party channel is `MEMBERS` plus `grouped`, and `membership_fn` alone was the bug.** `membership_fn(peer, channel)` is asked about the receiver and never hears who is talking, so a "party" channel on it reached every party member on the server — dot-party's own notes named it as the thing dot-chat could not do. `DotChatChannel.grouped` with `DotChatRouter.group_fn(peer, channel) -> StringName` is sender-aware: a line reaches only the sender's group; a sender with no group reaches nobody but themselves; a server line reaches everybody with *a* group; a grouped channel with no `group_fn` reaches nobody. Every ambiguous case fails closed because the failure that matters is one party reading another's line. **It is opt-in per channel rather than per router** because game-g2gfast carries a plain members channel (the players on a run) and a router-wide switch would have made it reach nobody the day a host set `group_fn` — which dot-server-deploy does for every game. `membership_fn` still applies on a grouped channel when set, as "who may be in the channel at all". Section "router: grouped members channels" was armed: with the branch disabled, five of its checks fail.
+- **A radius is not a room, and `can_hear_fn` is the seam for the difference.** `can_hear_fn(listener, speaker, listener_at, speaker_at) -> bool` is asked on a `RADIUS` channel after the distance test, only about listeners already inside the radius, and is handed the two positions `position_fn` produced. It exists because game-simple-lobby's wing is a separate room with a 180-thick partition and a 420 radius, so two people either side of the wall were 100 apart and in one conversation. **This addon does not know what a wall is and must not**: what blocks sound is a level's decision, and a wall list here would be a second copy of the level. Unset, the radius is the whole answer. Armed in "router: audience": with the call disabled, three checks fail.
 - **`position_fn` returns a `Vector3`.** A 2D game returns `Vector3(x, y, 0)`.
   Measuring a 2D distance in a 3D world is how dot-npc-ai called two NPCs standing on
   each other 1.8 metres apart.
@@ -224,7 +225,7 @@ find . -name '*.gd' -not -path './.godot/*' | while read f; do
     godot --headless --path . --check-only --script "res://${f#./}"
 done
 godot --headless --path . res://examples/chat_selftest.tscn
-# 17 sections, 168 checks, all offline. Exits non-zero on any failure.
+# 17 sections, 171 checks, all offline. Exits non-zero on any failure.
 ```
 
 The suite counts its sections and fails if fewer ran than it has, because a script

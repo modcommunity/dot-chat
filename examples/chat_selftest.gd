@@ -14,7 +14,7 @@ extends Node
 ## [/codeblock]
 
 const SECTIONS := 17
-const CHECKS := 168
+const CHECKS := 171
 
 ## Where the relay sections keep their cursor. Removed before every relay is built.
 const RELAY_CURSOR := "user://relay_selftest_cursor.json"
@@ -514,6 +514,34 @@ func _test_router_audience() -> void:
 		near_to.has(3) and near_to.has(4) and not near_to.has(2),
 		"a radius channel reaches only what is inside it"
 	)
+
+	# [b]A radius is not a room.[/b] The host's can_hear_fn stands a wall at x = 3: Di at
+	# x = 1 is on Ada's side of it and Cy at x = 5 is not, though both are inside the
+	# radius. Bo is outside the radius and must not even be asked about — the distance
+	# test is the cheap one and comes first.
+	var asked: Array = []
+	router.can_hear_fn = func(listener: int, speaker: int, listener_at: Vector3, speaker_at: Vector3) -> bool:
+		asked.append([listener, speaker, listener_at, speaker_at])
+		return (listener_at.x < 3.0) == (speaker_at.x < 3.0)
+
+	router.submit(1, &"near", "this side of the wall")
+	var walled_to: Array = world.sent[-1]["to"]
+	_check(
+		walled_to.has(4) and not walled_to.has(3) and not walled_to.has(2),
+		"can_hear_fn takes out a listener the radius let in (%s)" % str(walled_to)
+	)
+	var asked_about := asked.map(func(row: Array) -> int: return int(row[0]))
+	_check(
+		not asked_about.has(2) and asked_about.has(3) and asked_about.has(4),
+		"and is asked only about listeners inside the radius (%s)" % str(asked_about)
+	)
+	var about_cy: Array = asked.filter(func(row: Array) -> bool: return int(row[0]) == 3)
+	_check(
+		about_cy.size() == 1 and int(about_cy[0][1]) == 1
+			and about_cy[0][2] == Vector3(5, 0, 0) and about_cy[0][3] == Vector3.ZERO,
+		"and is handed the speaker and both positions position_fn produced"
+	)
+	router.can_hear_fn = Callable()
 
 	var whispered := router.whisper(1, 3, "just you")
 	_check(whispered.ok, "a whisper is accepted")

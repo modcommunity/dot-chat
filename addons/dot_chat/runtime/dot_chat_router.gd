@@ -113,6 +113,20 @@ var team_fn: Callable = Callable()
 ## world is how dot-npc-ai called two NPCs standing on each other 1.8 metres apart.
 var position_fn: Callable = Callable()
 
+## [code]func(listener: int, speaker: int, listener_at: Vector3, speaker_at: Vector3) -> bool[/code].
+## Optional. For [constant DotChatChannel.Scope.RADIUS], asked only of a listener already
+## inside the radius.
+##
+## [b]A radius is not a room.[/b] Two people either side of a wall can be well inside
+## one, and a game that has walls has to be able to say so. This addon cannot: it knows
+## positions and nothing about what stands between them, and it must not learn — what
+## blocks sound is a level's decision, and a wall list here would be one more copy of a
+## level to keep in step with the level. So the host is asked, after the distance test
+## (the cheap one, which rules most people out first), and is handed both positions
+## [member position_fn] already produced rather than asked for them again. Unset, the
+## radius is the whole answer, as it always was.
+var can_hear_fn: Callable = Callable()
+
 ## [code]func(peer: int, channel: StringName) -> bool[/code]. For
 ## [constant DotChatChannel.Scope.MEMBERS].
 var membership_fn: Callable = Callable()
@@ -718,7 +732,11 @@ func _receives(peer: int, message: DotChatMessage, chan: DotChatChannel) -> bool
 				return false
 			var here: Vector3 = position_fn.call(peer)
 			var there: Vector3 = position_fn.call(message.sender_peer)
-			return here.distance_to(there) <= chan.radius
+			if here.distance_to(there) > chan.radius:
+				return false
+			if can_hear_fn.is_valid():
+				return bool(can_hear_fn.call(peer, message.sender_peer, here, there))
+			return true
 
 		DotChatChannel.Scope.MEMBERS:
 			if chan.grouped:
