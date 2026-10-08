@@ -168,7 +168,7 @@ func env_prefix() -> String:
 
 
 func cli_prefix() -> String:
-	return "chat_relay_"
+	return "--chat_relay_"
 
 
 func validate() -> DotResult:
