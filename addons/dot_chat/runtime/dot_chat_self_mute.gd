@@ -264,7 +264,9 @@ func _row_for(sender: String, name: String) -> Dictionary:
 	if sender.is_valid_int():
 		var id := int(sender)
 		for row in roster:
-			if row["id"] == id:
+			# The name must agree too: a game whose sender key is its own player number
+			# rather than dot-server's userid would otherwise land on somebody else's row.
+			if row["id"] == id and (name == "" or row["name"] == name):
 				return row
 	if name == "":
 		return {}
