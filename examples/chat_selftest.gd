@@ -13,8 +13,8 @@ extends Node
 ## godot --headless --path . res://examples/chat_selftest.tscn
 ## [/codeblock]
 
-const SECTIONS := 17
-const CHECKS := 171
+const SECTIONS := 18
+const CHECKS := 191
 
 ## Where the relay sections keep their cursor. Removed before every relay is built.
 const RELAY_CURSOR := "user://relay_selftest_cursor.json"
@@ -130,6 +130,7 @@ func _run() -> void:
 	_test_router_commands()
 	_test_backlog()
 	_test_client()
+	_test_self_mute()
 	_test_format()
 	await _test_relay_out()
 	await _test_relay_in()
@@ -937,6 +938,126 @@ func _test_client() -> void:
 
 	client.queue_free()
 	router.queue_free()
+
+
+## The player's own block list, `sm`. Everything but the chat box and the voice manager is
+## here; dot-ui's suite proves `!sm` never leaves the box, dot-game's the whole client.
+class FakeVoice extends RefCounted:
+	var muted: Dictionary = {}
+	func set_local_mute(peer: int, on: bool) -> void:
+		if on:
+			muted[peer] = true
+		else:
+			muted.erase(peer)
+
+
+func _said(id: int, name: String, text: String, seq: int) -> Dictionary:
+	return {"n": seq, "t": 0, "c": "all", "k": "say", "m": text, "s": str(id), "d": name}
+
+
+func _test_self_mute() -> void:
+	_section("self mute (sm)")
+
+	var path := "user://selftest_self_mute.json"
+	if FileAccess.file_exists(path):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+
+	var list := DotChatSelfMute.new()
+	list.path = path
+	list.refresh_sec = 0.0
+	DotRegistry.register(DotChatSelfMute.SERVICE, list)
+	_check(DotChatSelfMute.shared() == list, "the registered list is the one everybody shares")
+
+	list.set_roster([
+		{"id": 3, "name": "Ada", "key": "k-ada", "peer": 301},
+		{"id": 4, "name": "Adam", "key": "k-adam", "peer": 401},
+		{"id": 5, "name": "Bob", "peer": 501},
+		{"id": 9, "name": "Me", "key": "k-me", "peer": 901},
+		{"id": 6, "name": "Bot 1", "bot": true},
+	], 9)
+
+	var listing := list.run(PackedStringArray())
+	_check(listing.size() == 4 and listing[1].contains("Ada") and listing[2].contains("Adam")
+		and listing[3].contains("Bob"), "sm lists the others, numbered, without yourself or bots")
+
+	var several := list.run(PackedStringArray(["ad"]))
+	_check(several.size() == 3 and several[0].begins_with("2 players match")
+		and list.entries.is_empty(), "a part of two names lists both and mutes nobody")
+
+	var voice := FakeVoice.new()
+	list.attach_voice(voice)
+	var reply := list.run(PackedStringArray(["ADA"]))
+	_check(reply[0].begins_with("Muted Ada") and list.is_muted("Ada", "3")
+		and not list.is_muted("Adam", "4"), "a whole name, any case, mutes that one player")
+	_check(voice.muted.has(301) and voice.muted.size() == 1, "and their voice is dropped on the manager")
+
+	var client := DotChatClient.new()
+	client.register_as = &""
+	client.channels = [DotChatChannel.everyone()]
+	add_child(client)
+	var drawn: Array[String] = []
+	client.message_received.connect(func(m: DotChatMessage, _c: StringName) -> void:
+		drawn.append(m.sender_name))
+
+	var _a := client.receive(_said(3, "Ada", "you cannot see this", 1))
+	var _b := client.receive(_said(4, "Adam", "you can see this", 2))
+	var _j := client.receive({"n": 3, "t": 0, "c": "all", "k": "join", "m": "", "d": "Ada"})
+	_check(drawn == ["Adam", "Ada"] and client.history.size() == 2,
+		"a muted player's line is never filed; others and their join notice are (%s)" % str(drawn))
+	var _bl := client.receive_backlog([_said(3, "Ada", "old", 4), _said(4, "Adam", "old", 5)])
+	_check(drawn.size() == 3 and drawn[-1] == "Adam", "and a backlog drops them too")
+
+	# A game change, or the shell switching packs: a new list from the same file.
+	var again := DotChatSelfMute.new()
+	again.path = path
+	again.refresh_sec = 0.0
+	again.load_list()
+	_check(again.entries.size() == 1 and again.entries[0]["key"] == "k-ada",
+		"the list survives in user://, keyed by the server's key")
+
+	# Ada reconnects: new userid, new peer, same key.
+	again.set_roster([{"id": 12, "name": "Ada", "key": "k-ada", "peer": 1201}], 9)
+	var voice2 := FakeVoice.new()
+	again.attach_voice(voice2)
+	_check(again.is_muted("Ada", "12") and voice2.muted.has(1201),
+		"a reconnect is still muted, chat and voice, by key")
+	again.set_roster([{"id": 12, "name": "Ada the Second", "key": "k-ada", "peer": 1201}], 9)
+	_check(again.is_muted("Ada the Second", "12") and again.entries[0]["name"] == "Ada the Second",
+		"a rename is still muted, and the name kept current")
+	again.set_roster([{"id": 20, "name": "Ada the Second", "key": "k-other", "peer": 2001}], 9)
+	_check(not again.is_muted("Ada the Second", "20"), "somebody else with that name is not")
+
+	# A server with no keys: by name, upgraded to the key when one is seen.
+	list.set_roster([{"id": 5, "name": "Bob", "peer": 501}, {"id": 3, "name": "Ada", "key": "k-ada", "peer": 301}], 9)
+	var _m := list.run(PackedStringArray(["bob"]))
+	_check(list.is_muted("Bob", "5") and list.entries[-1]["key"] == "", "with no key, by name")
+	list.set_roster([{"id": 7, "name": "Bob", "key": "k-bob", "peer": 701}], 9)
+	_check(list.entries[-1]["key"] == "k-bob" and list.is_muted("Bob", "7") and voice.muted.has(701)
+		and not voice.muted.has(301), "and the name learns the key; a peer that left is unmuted on voice")
+
+	var absent := list.run(PackedStringArray())
+	_check(absent.size() == 3 and absent[2].contains("not here") and absent[2].contains("Ada"),
+		"a muted player who left is listed, so they can be unmuted (%s)" % str(absent))
+	var _u := list.run(PackedStringArray(["2"]))
+	_check(not list.is_muted("Ada", "3") and list.entries.size() == 1, "sm <number> toggles that line")
+
+	list.set_roster([{"id": 4, "name": "Adam", "key": "k-adam", "peer": 401}], 9)
+	var _h := list.run(PackedStringArray(["#4"]))
+	_check(list.is_muted("Adam", "4"), "sm #userid toggles by userid")
+	_check(list.run(PackedStringArray(["#99"]))[0].begins_with("Nobody here has userid"),
+		"an unknown userid says so")
+	_check(list.run(PackedStringArray(["zed"]))[0].begins_with("Nobody here matches"),
+		"an unknown name says so")
+
+	_check(list.claims_chat("!sm") and list.claims_chat("/sm adam") and list.claims_chat("  !SM 2")
+		and not list.claims_chat("sm") and not list.claims_chat("!smile")
+		and not list.claims_chat("/sms"), "chat claims !sm and /sm, never a bare word or a longer command")
+	var chat_reply := list.handle_chat("/sm adam")
+	_check(chat_reply[0] == "Unmuted Adam." and not list.is_muted("Adam", "4"), "and runs them")
+
+	client.queue_free()
+	DotRegistry.unregister_instance(DotChatSelfMute.SERVICE, list)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 
 
 func _test_format() -> void:

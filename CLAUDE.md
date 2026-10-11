@@ -19,7 +19,7 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 | Path | What |
 | --- | --- |
 | `addons/dot_chat/core/` | `DotChatMessage` (one line; short-keyed wire form, no peer ids), `DotChatChannel` (five scopes), `DotChatRules` (every policy, a `DotConfig`), `DotChatFilter` (control and invisible characters, markup, length, censoring), `DotChatRelayConfig` |
-| `addons/dot_chat/runtime/` | `DotChatRouter` (the server half: accept, audience, keep, send), `DotChatHistory` (capped per channel and in total), `DotChatClient` (filing, gap detection, unread counts, the local pre-check) |
+| `addons/dot_chat/runtime/` | `DotChatRouter` (the server half: accept, audience, keep, send), `DotChatHistory` (capped per channel and in total), `DotChatClient` (filing, gap detection, unread counts, the local pre-check, dropping self-muted lines), `DotChatSelfMute` (the player's own block list, `sm`) |
 | `addons/dot_chat/net/` | `DotChatRelay`: the website relay |
 | `addons/dot_chat/ui/` | `DotChatFormat`: a message to a BBCode line, or `plain()` |
 | `examples/chat_selftest.tscn` | the suite; all offline, non-zero on failure, and it fails if fewer sections ran than it has |
@@ -44,5 +44,6 @@ The family's two steps ([game-dev/CLAUDE.md](../../CLAUDE.md#validating-anything
 - `is_carrying()` needs all four: started, enabled, `send_game_chat`, a client. [relay](docs/relay.md#is_carrying-takes-four-things)
 - A relayed line is `announce_from`, filtered in text and name, and never echoed back (a flag, not a sender match). [relay](docs/relay.md#announce_from-and-why-announce-was-not-enough)
 - `publish_commands()` re-reads `commands_fn` every time and builds at the relay's own `command_source`; a refusal from the site is INFO. [relay](docs/relay.md#telling-the-site-what-this-server-accepts)
+- `sm` is the player's, never the server's: consumed by the chat box before it is sent, one list per process (`dot_self_mute`, reached by path elsewhere), keyed by dot-server's scoreboard `key` with the name as fallback, in `user://dot_self_mute.json`. [design](docs/design.md#the-players-own-block-list-sm)
 
-Deliberately not here: a chat window, translation, voice, persistence, cross-server channels. [design](docs/design.md#deliberately-not-here)
+Deliberately not here: a chat window, translation, voice, chat persistence, cross-server channels. [design](docs/design.md#deliberately-not-here)

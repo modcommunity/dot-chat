@@ -47,10 +47,20 @@ That is also why sanitisation is server-side and its output is what everybody re
 - **A radius is not a room, and `can_hear_fn` is the seam for the difference.** `can_hear_fn(listener, speaker, listener_at, speaker_at) -> bool` is asked on a `RADIUS` channel after the distance test, only about listeners already inside the radius, and is handed the two positions `position_fn` produced. It exists because a room behind a thin partition, inside the radius, put two people either side of the wall in one conversation. **This addon does not know what a wall is and must not**: what blocks sound is a level's decision, and a wall list here would be a second copy of the level. Unset, the radius is the whole answer.
 - **`position_fn` returns a `Vector3`.** A 2D game returns `Vector3(x, y, 0)`. Measuring a 2D distance in a 3D world is how dot-npc-ai once called two NPCs standing on each other 1.8 metres apart.
 
+## The player's own block list (`sm`)
+
+`DotChatSelfMute` is the one piece of dot-chat that is the player's rather than the server's: the people whose chat this client does not draw and whose voice it does not play. Typed as `sm` in the console, `!sm` or `/sm` in chat; `sm` lists who is here, numbered, with who is muted; `sm <number>`, `sm <name>` (whole first, then a unique part, any case) or `sm #userid` toggles.
+
+- **Never on the wire.** The chat box (dot-ui's `DotChatWindow`) consumes `!sm` / `/sm` before `submitted`, so the server never sees the line, nobody is told, and there is no server-side list to leak. A moderator's gag is a different feature and stays `dot_mute_source`'s.
+- **One list per process, `dot_self_mute` in the registry** (`DotChatSelfMute.shared()`). dot-ui, dot-game, dot-console and dot-voice reach it by path (`SCRIPT_PATH`) and duck typing, so none of them depends on dot-chat. Inside the shell every delivered game shares the shell's `user://`, so the file (`user://dot_self_mute.json`) is named for the list, not a game, and a pack switch finds the same list.
+- **Keyed by dot-server's scoreboard `key`, the name as fallback.** `sender_key` is the userid, which a reconnect changes. dot-server's rows carry `key` (a per-server salted digest of the account) and `peer`; the list asks for a roster every `refresh_sec` with `request_scoreboard()` (one board, a held one stays held). An entry made by name learns the key when a roster shows it; a keyed row with the same name and another key is somebody else and is not muted.
+- **Dropped before drawing, before decoding.** `DotChatClient` drops a muted player's `say`, `action` and `whisper` after the sequence bookkeeping (no false gap) and before the history (not unread, not in scrollback), backlog included; join and leave notices are the server's lines and stay. `DotChatWindow.add_said` drops them too, for games that draw without `DotChatClient`. Voice: `attach_voice(manager)` mutes each muted roster row's `peer` with `DotVoiceManager.set_local_mute`, and undoes only what it did.
+- **What it cannot do:** mute the voice of a player whose peer it has not seen in a roster (a server before dot-server API 9 sends no `peer`, and a reconnect plays until the next roster, at most `refresh_sec`).
+
 ## Deliberately not here
 
 - **A chat window.** No scene, no theme, no `RichTextLabel`. `DotChatFormat` gives you the line; dot-game's `DotGameChatClient` and dot-ui draw it.
 - **Translation.** A message is text a player typed; translating it is a per-game decision and dot-chat has no string table.
 - **Voice.** dot-voice; the two meet only at dot-moderation, which publishes one source both consult.
-- **Persistence.** History is in memory and capped, per channel *and* in total. A community that wants chat logs on disk connects `message_accepted` to a log sink, which is a log, and belongs in one.
+- **Persistence of chat.** History is in memory and capped, per channel *and* in total. A community that wants chat logs on disk connects `message_accepted` to a log sink, which is a log, and belongs in one.
 - **Cross-server chat.** A router is one server's. A backbone-relayed channel would be a `DotChatChannel` with a `MEMBERS` scope and a source that is not this process, and nothing about the design refuses it. `DotChatRelay` is the first thing to take that door: it does not add a channel, it announces into an existing one.

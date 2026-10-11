@@ -63,6 +63,14 @@ signal unread_changed(channel_id: StringName, unread: int)
 ## reaches the server.
 var send_fn: Callable = Callable()
 
+## Whether this client drops the lines of players on the player's own block list
+## ([DotChatSelfMute], the `sm` command). On: the list is the player's, and a game that
+## files chat here is the game that should honour it.
+@export var use_self_mute: bool = true
+
+## The block list asked, or null for the shared one ([method DotChatSelfMute.shared]).
+var self_mute: Object = null
+
 var history: DotChatHistory = null
 
 ## The channel the input box is currently addressing.
@@ -93,6 +101,11 @@ func start() -> DotResult:
 
 	if register_as != &"":
 		DotRegistry.register(register_as, self)
+
+	# Now rather than at the first line: the shared list is what asks the server who is
+	# here, and a list loaded only when somebody spoke would not know whose voice to drop.
+	if use_self_mute and self_mute == null:
+		self_mute = DotChatSelfMute.shared()
 
 	_started = true
 	return DotResult.success(self)
@@ -178,6 +191,11 @@ func receive(wire: Dictionary) -> DotResult:
 	if message.seq > 0:
 		_last_seq = message.seq
 
+	# After the sequence bookkeeping, so a dropped line is not reported as a gap; before
+	# the history, so it is neither drawn, counted unread, nor there when scrolled back to.
+	if _self_muted(message):
+		return DotResult.success(message)
+
 	history.append(message)
 
 	if message.channel != active_channel:
@@ -187,6 +205,17 @@ func receive(wire: Dictionary) -> DotResult:
 
 	message_received.emit(message, message.channel)
 	return DotResult.success(message)
+
+
+## Whether the player muted whoever said [param message] ([DotChatSelfMute]). Only what a
+## player says: a join or leave notice names them and is the server's line, and stays.
+func _self_muted(message: DotChatMessage) -> bool:
+	if not use_self_mute or message.is_from_server() or message.sender_name == "":
+		return false
+	if self_mute == null:
+		self_mute = DotRegistry.get_service(DotChatSelfMute.SERVICE)
+	return self_mute != null and self_mute.has_method(&"is_muted") \
+		and bool(self_mute.call(&"is_muted", message.sender_name, message.sender_key))
 
 
 ## Files a whole backlog in one call, without reporting a gap for it.
@@ -207,8 +236,10 @@ func receive_backlog(lines: Array) -> int:
 			unreadable += 1
 			continue
 		var message: DotChatMessage = parsed.value
-		history.append(message)
 		_last_seq = maxi(_last_seq, message.seq)
+		if _self_muted(message):
+			continue
+		history.append(message)
 		message_received.emit(message, message.channel)
 		filed += 1
 
