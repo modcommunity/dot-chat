@@ -14,7 +14,7 @@ extends Node
 ## [/codeblock]
 
 const SECTIONS := 18
-const CHECKS := 191
+const CHECKS := 192
 
 ## Where the relay sections keep their cursor. Removed before every relay is built.
 const RELAY_CURSOR := "user://relay_selftest_cursor.json"
@@ -1054,6 +1054,15 @@ func _test_self_mute() -> void:
 		and not list.claims_chat("/sms"), "chat claims !sm and /sm, never a bare word or a longer command")
 	var chat_reply := list.handle_chat("/sm adam")
 	_check(chat_reply[0] == "Unmuted Adam." and not list.is_muted("Adam", "4"), "and runs them")
+
+	# The player's voice manager is found by registry name, whichever is made first.
+	list.set_roster([{"id": 3, "name": "Ada", "key": "k-ada", "peer": 301}], 9)
+	list.set_muted({"key": "k-ada", "name": "Ada"}, true)
+	list.watch()
+	var published := FakeVoice.new()
+	DotRegistry.register(DotChatSelfMute.VOICE_SERVICE, published)
+	_check(published.muted.has(301), "a voice manager published as dot_voice_client is bound as it appears")
+	DotRegistry.unregister_instance(DotChatSelfMute.VOICE_SERVICE, published)
 
 	client.queue_free()
 	DotRegistry.unregister_instance(DotChatSelfMute.SERVICE, list)

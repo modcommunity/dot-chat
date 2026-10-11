@@ -35,8 +35,9 @@ extends RefCounted
 ## first time a roster shows that name with one.
 ##
 ## [b]Nothing here names dot-server, dot-ui or dot-voice.[/b] The link is the registry's
-## `dot_client_link`, read for `scoreboard_received` and `request_scoreboard()`; a voice
-## manager is anything with `set_local_mute(peer, muted)`. dot-chat keeps its one
+## `dot_client_link`, read for `scoreboard_received` and `request_scoreboard()`; the voice
+## manager is the registry's `dot_voice_client` (bound as it is published), or anything
+## handed to [method attach_voice] with `set_local_mute(peer, muted)`. dot-chat keeps its one
 ## dependency.
 
 const CHANNEL := "chat.self_mute"
@@ -48,6 +49,11 @@ const SERVICE := &"dot_self_mute"
 const SCRIPT_PATH := "res://addons/dot_chat/runtime/dot_chat_self_mute.gd"
 
 const LINK_SERVICE := &"dot_client_link"
+
+## Where a game's own player's voice manager is published (dot-voice's
+## `DotVoiceManager.CLIENT_SERVICE`, by `publish_as_client()`). Bound by name, so neither
+## addon loads the other: whichever is built first, the list finds the manager.
+const VOICE_SERVICE := &"dot_voice_client"
 
 const DEFAULT_PATH := "user://dot_self_mute.json"
 
@@ -143,13 +149,27 @@ func save_list() -> void:
 
 # --- The roster ----------------------------------------------------------------
 
-## Starts asking for rosters, once, for as long as the process runs.
+## Starts asking for rosters, once, for as long as the process runs, and binds the player's
+## voice manager whenever one is published.
 func watch() -> void:
 	_watch_link()
+	var bus := DotRegistry.signals()
+	if not bus.service_registered.is_connected(_on_service_registered):
+		bus.service_registered.connect(_on_service_registered)
+	var voice: Object = DotRegistry.get_service(VOICE_SERVICE)
+	if voice != null:
+		attach_voice(voice)
 	if _ticking:
 		return
 	_ticking = true
 	_tick()
+
+
+func _on_service_registered(service: StringName, instance: Object) -> void:
+	if service == VOICE_SERVICE and instance != null:
+		attach_voice(instance)
+	elif service == LINK_SERVICE:
+		var _l := _watch_link()
 
 
 func _tick() -> void:
