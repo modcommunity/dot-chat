@@ -378,9 +378,7 @@ func run(args: PackedStringArray) -> PackedStringArray:
 	var row: Dictionary = found["row"]
 	if toggle(row):
 		return PackedStringArray([
-			"Muted %s: you will not see their chat or hear their voice. Only you; they are not told. sm %s again undoes it." % [
-				row["name"], row["name"],
-			]
+			"Muted %s: chat and voice, for you only." % row["name"]
 		])
 	return PackedStringArray(["Unmuted %s." % row["name"]])
 
@@ -437,7 +435,7 @@ func list_lines() -> PackedStringArray:
 		return PackedStringArray(["Nobody else is here, and nobody is muted."])
 
 	var out := PackedStringArray([
-		"Self mute: sm <number>, sm <name> or sm #userid mutes or unmutes. Only you are affected.",
+		"Self mute, yours only. sm <n | name | #id> toggles:",
 	])
 	for i in _listed.size():
 		out.append(_line_for(i + 1, _listed[i]))
