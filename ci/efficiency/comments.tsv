@@ -1,0 +1,23 @@
+# comments
+# Baselines only shrink: scripts/<gate> --update lowers or drops entries and refuses to add.
+addons/dot_chat/core/dot_chat_channel.gd::long_block	6
+addons/dot_chat/core/dot_chat_filter.gd::long_block	9
+addons/dot_chat/core/dot_chat_message.gd::long_block	8
+addons/dot_chat/core/dot_chat_relay_config.gd::history	2
+addons/dot_chat/core/dot_chat_relay_config.gd::long_block	14
+addons/dot_chat/core/dot_chat_rules.gd::long_block	12
+addons/dot_chat/dot_chat_plugin.gd::long_block	1
+addons/dot_chat/net/dot_chat_relay.gd::banner	5
+addons/dot_chat/net/dot_chat_relay.gd::long_block	16
+addons/dot_chat/runtime/dot_chat_client.gd::banner	3
+addons/dot_chat/runtime/dot_chat_client.gd::long_block	4
+addons/dot_chat/runtime/dot_chat_history.gd::long_block	1
+addons/dot_chat/runtime/dot_chat_router.gd::banner	8
+addons/dot_chat/runtime/dot_chat_router.gd::long_block	19
+addons/dot_chat/runtime/dot_chat_self_mute.gd::banner	6
+addons/dot_chat/runtime/dot_chat_self_mute.gd::long_block	3
+addons/dot_chat/ui/dot_chat_format.gd::long_block	3
+examples/chat_selftest.gd::banner	4
+examples/chat_selftest.gd::commented_code	1
+examples/chat_selftest.gd::history	1
+examples/chat_selftest.gd::long_block	9
