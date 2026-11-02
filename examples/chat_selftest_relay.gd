@@ -120,6 +120,12 @@ func _test_relay_out() -> void:
 	_check(backbone.posted.size() == before,
 		"nor is a line the relay itself just announced — that is the echo")
 
+	await _test_relay_commands(relay, router, backbone)
+
+
+func _test_relay_commands(
+	relay: DotChatRelay, router: DotChatRouter, backbone: FakeBackbone
+) -> void:
 	# What this server ACCEPTS, published so a site composer can offer it.
 	#
 	# The list is the server's because only the server has it: the command table depends on
@@ -230,6 +236,14 @@ func _test_relay_in() -> void:
 	# The cursor moved, which is what stops an hour of history arriving on the next poll.
 	_check(relay.describe()["cursor"] == "10", "and the cursor advanced")
 
+	await _test_relay_in_commands(relay, router, backbone, cfg, ran, asked, heard)
+
+
+func _test_relay_in_commands(
+	relay: DotChatRelay, router: DotChatRouter, backbone: FakeBackbone,
+	cfg: DotChatRelayConfig, ran: Array[Dictionary], asked: Array[Dictionary],
+	heard: Array[Dictionary]
+) -> void:
 	# A command from somebody without the flag.
 	backbone.outbound = [{
 		"id": "11", "author": "Cy", "authorId": "cy1",
