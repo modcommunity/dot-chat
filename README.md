@@ -125,7 +125,7 @@ dot-chat ships no art, for dot-ui's reason: an addon that draws its own chat win
 ```bash
 godot --headless --path . --import
 godot --headless --path . res://examples/chat_selftest.tscn
-# 171 checks, all offline. Exits non-zero on any failure.
+# 192 checks, all offline. Exits non-zero on any failure.
 ```
 
 ## Licence
