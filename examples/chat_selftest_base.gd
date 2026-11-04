@@ -44,10 +44,8 @@ func _test_message_wire() -> void:
 		"meta is copied, not shared with the original"
 	)
 
-	# Every value of the enum, both directions. dot-moderation stored a voice mute
-	# under its player-facing name and read it back as a warning, which enforced
-	# nothing and errored nowhere; one table used both ways is the fix and this is
-	# the check that says the table is complete.
+	# Every enum value, both directions: one table used both ways, and this checks it is
+	# complete (a voice mute once read back as a warning).
 	var all_kinds := true
 	for value in DotChatMessage.Kind.values():
 		var probe := DotChatMessage.make(value, &"all", "u_1", "Ada", "x")
@@ -63,12 +61,8 @@ func _test_message_wire() -> void:
 	var bad := DotChatMessage.from_dictionary({"k": "nonsense", "m": "hi"})
 	_check(not bad.ok and bad.code() == DotError.CODE_PARSE, "a bad kind fails to parse")
 
-	# [b]The one that shipped.[/b] Every key here has a default, so before this check any
-	# dictionary at all parsed. dot-server's chat manager sends a payload of its own —
-	# `{kind, userid, name, text, admin}` — and a client handed one filed a perfectly
-	# valid message whose text, sender and channel were all empty. Two games in this
-	# family drew every line a player typed as ": ", and nothing errored anywhere,
-	# because the message HAD parsed.
+	# Every key has a default, so any dictionary parsed; dot-server's own payload then
+	# filed an empty message and games drew every line as ": ". It must be refused.
 	var foreign := DotChatMessage.from_dictionary({
 		"kind": "all", "userid": 3, "name": "Alice", "text": "hello everyone",
 	})
@@ -277,8 +271,6 @@ func _test_history() -> void:
 	zero.append(DotChatMessage.say(&"nowhere", "u_1", "Ada", "x"))
 	_check(zero.size() == 0, "a channel with no history keeps none")
 
-
-# --- The router ------------------------------------------------------------
 
 func _section(title: String) -> void:
 	_section_count += 1

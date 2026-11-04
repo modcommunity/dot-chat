@@ -12,14 +12,8 @@ class FakeMuteSource extends Node:
 		return gagged.has(peer)
 
 
-## The host's session table, in the smallest form that still has every field the
-## router asks for.
 ## A backbone that records what it was sent and answers what it was told to.
-##
-## [b]Duck-typed on purpose, exactly as the real one is.[/b] `DotChatRelay.client` is an
-## [Object] and is never named, because a script mentioning `DotBackboneClient` fails to
-## compile in a project without dot-auth — which is this one. That the relay's own suite
-## can substitute a plain RefCounted here is the proof that the seam is real.
+## Duck-typed: a script naming `DotBackboneClient` fails to compile without dot-auth.
 class FakeBackbone extends RefCounted:
 	var posted: Array[Dictionary] = []
 	var outbound: Array[Dictionary] = []

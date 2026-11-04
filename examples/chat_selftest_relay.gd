@@ -37,10 +37,8 @@ func _relay_world() -> Array:
 	var cfg := DotChatRelayConfig.new()
 	cfg.enabled = true
 	cfg.cursor_path = RELAY_CURSOR
-	# [b]The one file this suite writes that a relay reads back at start.[/b] The relay
-	# loads its cursor in `_ready`, so without this every run began where the last one
-	# stopped — cursor "14" — and a backbone that honoured `since` would have handed the
-	# relay-in section nothing at all on the second run. See docs/testing.md.
+	# The relay loads its cursor in `_ready`, so a stale file made each run begin where
+	# the last stopped. See docs/testing.md.
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(RELAY_CURSOR))
 
 	var relay := DotChatRelay.new()
@@ -107,11 +105,8 @@ func _test_relay_out() -> void:
 	_check(backbone.posted.size() == before,
 		"a SYSTEM announcement is not relayed, because that is the loop")
 
-	# And a line arriving FROM the website must not be posted straight back TO it.
-	#
-	# Through the relay's own delivery path, which is the one that happens: calling
-	# `announce_from` directly is a host announcing something of its own, and that is a
-	# line the website should see. The loop is specifically the relay's own echo.
+	# A line arriving FROM the website must not be posted straight back TO it. Go through
+	# the relay's delivery path: `announce_from` is a host's own line, which should post.
 	relay._deliver({
 		"id": "1", "author": "Ada", "authorId": "ada1",
 		"body": "hi from the web", "muted": false,
@@ -126,13 +121,8 @@ func _test_relay_out() -> void:
 func _test_relay_commands(
 	relay: DotChatRelay, router: DotChatRouter, backbone: FakeBackbone
 ) -> void:
-	# What this server ACCEPTS, published so a site composer can offer it.
-	#
-	# The list is the server's because only the server has it: the command table depends on
-	# which game is loaded and which modules an operator installed, so a list held by the
-	# website is stale the first time either changes. `commands_fn` is re-read on every
-	# publish for exactly that reason, and the check below is what says so — a callable
-	# that closed over a list would answer the same thing twice.
+	# What this server ACCEPTS, published for the site composer. `commands_fn` is re-read
+	# on every publish, since the table varies by game and installed modules.
 	var commands := [
 		{"name": "map", "usage": "<id>", "description": "Change the map",
 		 "chat_allowed": true, "permission": "changemap"},

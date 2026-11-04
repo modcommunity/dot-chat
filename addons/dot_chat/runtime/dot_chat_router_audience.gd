@@ -19,37 +19,21 @@ var key_fn: Callable = Callable()
 var team_fn: Callable = Callable()
 
 ## [code]func(peer: int) -> Vector3[/code]. For [constant DotChatChannel.Scope.RADIUS].
-##
-## A 2D game returns [code]Vector3(x, y, 0)[/code]. Measuring a 2D distance in a 3D
-## world is how dot-npc-ai called two NPCs standing on each other 1.8 metres apart.
+## A 2D game returns [code]Vector3(x, y, 0)[/code]; a mixed 2D/3D distance is wrong.
 var position_fn: Callable = Callable()
 
 ## [code]func(listener: int, speaker: int, listener_at: Vector3, speaker_at: Vector3) -> bool[/code].
-## Optional. For [constant DotChatChannel.Scope.RADIUS], asked only of a listener already
-## inside the radius.
-##
-## [b]A radius is not a room.[/b] Two people either side of a wall can be well inside
-## one, and a game that has walls has to be able to say so. This addon cannot: it knows
-## positions and nothing about what stands between them, and it must not learn — what
-## blocks sound is a level's decision, and a wall list here would be one more copy of a
-## level to keep in step with the level. So the host is asked, after the distance test
-## (the cheap one, which rules most people out first), and is handed both positions
-## [member position_fn] already produced rather than asked for them again. Unset, the
-## radius is the whole answer, as it always was.
+## Optional, for RADIUS: a radius is not a room, so the host is asked after the distance
+## test. Unset, the radius is the whole answer.
 var can_hear_fn: Callable = Callable()
 
 ## [code]func(peer: int, channel: StringName) -> bool[/code]. For
 ## [constant DotChatChannel.Scope.MEMBERS].
 var membership_fn: Callable = Callable()
 
-## [code]func(peer: int, channel: StringName) -> StringName[/code]: which group a peer is
-## in on that channel — a party id, a squad — or [code]&""[/code] for none. For a
-## [member DotChatChannel.grouped] channel, where a line reaches only the sender's group.
-##
-## [b]Separate from [member membership_fn] because that one is never told the sender.[/b]
-## Both may be set: [member membership_fn] then says who may be in the channel at all,
-## and this which conversation of it they are in. A line from the server has no sender
-## group and reaches every peer that has one.
+## [code]func(peer: int, channel: StringName) -> StringName[/code]: a peer's group on a
+## [member DotChatChannel.grouped] channel (party, squad) or [code]&""[/code] for none.
+## Separate from [member membership_fn]; a server line reaches every peer that has one.
 var group_fn: Callable = Callable()
 
 ## [code]func(peer: int) -> bool[/code]. Gates [member DotChatChannel.admin_only].
@@ -169,10 +153,8 @@ func _receives(peer: int, message: DotChatMessage, chan: DotChatChannel) -> bool
 
 
 ## Whether [param peer] is in the sender's group on a grouped channel.
-##
-## Fails closed at every step: no [member group_fn], a sender with no group, or a receiver
-## with none all answer false. The failure that matters here is one party reading another
-## party's line, and every ambiguous case resolving to "nobody" is what rules it out.
+## Fails closed: no [member group_fn], or a sender or receiver with no group, is false,
+## so no ambiguity lets one party read another's line.
 func _same_group(peer: int, message: DotChatMessage, chan: DotChatChannel) -> bool:
 	if not group_fn.is_valid():
 		return false
