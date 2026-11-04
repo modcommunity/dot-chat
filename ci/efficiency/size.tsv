@@ -1,8 +1,6 @@
 # size
 # Baselines only shrink: scripts/<gate> --update lowers or drops entries and refuses to add.
 addons/dot_chat/net/dot_chat_relay.gd::start	82
-addons/dot_chat/runtime/dot_chat_router.gd	942
-examples/chat_selftest.gd	1046
 examples/chat_selftest.gd::_test_client	81
 examples/chat_selftest.gd::_test_router_audience	115
 examples/chat_selftest.gd::_test_router_groups	104
